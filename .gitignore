@@ -1,0 +1,57 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.ipynb_checkpoints/
+
+# ---- 虚拟环境 / 包管理 ----
+.venv/
+venv/
+env/
+.python-version
+uv.lock
+poetry.lock
+
+# ---- 数据 / 缓存（体积大，不入库）----
+data/
+raw/
+processed/
+cache/
+checkpoints/
+ckpt/
+logs/
+runs/
+wandb/
+outputs/
+*.h5ad
+*.h5
+*.parquet
+*.npz
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# ---- 结果文件 ----
+results/**/*.png
+results/**/*.pdf
+figures/**/*.png
+figures/**/*.pdf
+
+# ---- 编辑器 / 系统 ----
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.swp
+
+# ---- 凭据 ----
+.env
+.env.*
+*.pem
