@@ -1,5 +1,14 @@
 # CoFi-Gene：基于跨图 Attention 与单轮反馈的基因表征学习
 
+## Agent 工程维护入口（先读）
+
+- 本文是研究范围和实验协议的唯一基准；固定 B0–B7，不擅自追加模型。
+- 每次动代码前依次读取 `README.md`、`docs/STATUS.md`、`docs/DECISIONS.md`、`docs/DATA_CONTRACT.md`、`docs/ROADMAP.md`。
+- 把 `docs/STATUS.md` 视为最新进度，不能把计划误认作已实现；完成任务后更新状态、测试证据和下一步。
+- 修改模型/数据协议前检查泄漏：验证/测试隐藏边不得参与 GCN 或 Feedback，unseen perturbation 以目标基因为分组单位。
+- 不提交真实数据、模型权重、秘钥、服务器凭证；记录代码版本、seed、数据版本及可复现命令。
+- 新对话的交接模板见 `docs/HANDOFF.md`。
+
 **Cross-Graph Attention and Feedback-Guided Gene Embedding Learning**
 
 > **深度学习课程小项目 · 第三版计划**  

@@ -8,6 +8,12 @@ dist/
 *.egg-info/
 .eggs/
 .ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
 
 # ---- 虚拟环境 / 包管理 ----
 .venv/
