@@ -34,16 +34,27 @@ B4–B7 目前会被注册表拒绝（`NotImplementedError`），以避免用占
 
 训练方每个 run 需归档：git commit、config、seed、数据 manifest hash、Python/Torch/PyG/CUDA 版本、完整日志、validation/test metrics、checkpoint 路径、运行错误。测试集指标不用于调参。
 
-## 进度标记（2026-11-01）
+## Week 2 交付结果（2026-11-01 定格，之后停止新功能开发）
 
 | 里程碑 | 代码侧 | 数据/训练侧 |
 | --- | --- | --- |
 | M0 | ✅ 完成（骨架、CI、环境探针） | ⏳ 5090 上 `--strict` 未跑 |
 | M1 | ✅ 代码完成（读取、对齐、contract、split 持久化、manifest） | ❌ 真实 STRING/PIE 未下载核验 |
 | M2 | ✅ 代码完成（共同训练器 + B0–B3，合成数据端到端 + 确定性） | ❌ 真实数据/GPU 试跑未开始 |
-| M3 | ⏳ 未开始（B4 Gate / B5 Attention） | — |
-| M4 | ⏳ 未开始（B6/B7 单轮反馈） | — |
-| M5–M8 | ⏳ 未开始 | — |
+| M3 | ⛔ 未启动（按交付要求本周不做） | — |
+| M4 | ⛔ 未启动 | — |
+| M5–M8 | ⛔ 未启动 | — |
 
-下一步的三个前置条件：真实数据路径与阈值确认（D-005/D-011）、降维与标签规则确认（D-012/D-014/D-017）、训练预算固定（D-018）。
+交付证据：分支 `feat/week2-data-pipeline`（未合 main）；提交 `59f0dd9`（功能）、`21d389f`（CI 记录）；
+CI run 41283635590（`data-and-splits` ✅ / `torch-cpu` ✅）；`pytest -q` → 99 passed；合成数据 B0–B3 可训练且可复现。
+
+### M3 的启动前置条件（全部满足才开工）
+
+1. P0 决策锁定：STRING 版本/物种/阈值（D-005）、符号冲突策略（D-009）、DE 标签规则（D-014）。
+2. 5090 上 `scripts/check_environment.py --strict` 通过并留档（含 torch/CUDA/GPU 型号）。
+3. 真实数据构建成功：`scripts/build_dataset.py` 产出 `manifest.json`（基因数、两图边数、重合率、下游覆盖率）。
+4. P1 决策锁定：降维方法/拟合基因集（D-012/D-017）、边权归一化（D-011）、负样本比例（D-015）、训练预算（D-018）。
+
+未满足时**不要**先写 B4/B5：预算或特征一变，B0–B7 全部要重跑。
+
 

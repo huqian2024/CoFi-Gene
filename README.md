@@ -2,9 +2,9 @@
 
 基于两张 STRING 证据图、独立 GCN、跨图融合和单轮 Graph Feedback 的 Gene Embedding 课程项目。
 
-**先读**：`AGENTS.md`（原仓库已有的研究范围与 B0–B7 设计）→ [`docs/STATUS.md`](docs/STATUS.md)（当前事实与下一步）→ [`docs/DECISIONS.md`](docs/DECISIONS.md)（已锁定及待讨论决定）→ [`docs/DATA_CONTRACT.md`](docs/DATA_CONTRACT.md)（数据约定）。
+**先读**：`AGENTS.md`（研究范围与 B0–B7 设计）→ [`docs/STATUS.md`](docs/STATUS.md)（当前事实与下一步）→ [`docs/DECISIONS.md`](docs/DECISIONS.md)（已锁定及待确认决定）→ [`docs/DATA_CONTRACT.md`](docs/DATA_CONTRACT.md)（数据约定）→ [`docs/TEAM_HANDOFF.md`](docs/TEAM_HANDOFF.md)（队友视角交接：已完成/需确认/需准备/需验证）。
 
-> 本初始包仅新增工程结构和数据泄漏防线，**不包含真实数据、已训练模型或验证过的 GPU 训练结果**。不要用它覆盖仓库原有的 `AGENTS.md` / `.gitignore`。
+> 当前状态：数据管线与 B0–B3 已实现，并在**合成数据 + CPU** 上验证；**真实 STRING/PIE 数据与 GPU(5090) 均未验证**。详见 `docs/STATUS.md` 的"四层状态区分"。
 
 ## 研究边界
 
