@@ -56,6 +56,7 @@
   - `.venv/bin/python -m pytest -q` → 99 passed
   - `python scripts/make_synthetic_dataset.py --raw data/raw/ci_synthetic --processed data/processed/ci_synthetic` → 60 节点 / 16 维特征
   - `python -m cofi_gene.train --config configs/b3.yaml --dataset data/processed/ci_synthetic --out-dir runs/ci --epochs 4 --run-name ci_b3` → 生成 `metrics.json`
+- CI（run 41283635590，commit `59f0dd9`，分支 `feat/week2-data-pipeline`）：`data-and-splits` ✅、`torch-cpu` ✅（后者包含完整训练命令的端到端检查）。
 
 ## 明确的限制（不得当成已完成）
 
