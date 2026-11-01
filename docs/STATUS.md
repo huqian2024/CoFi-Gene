@@ -18,7 +18,7 @@
 | --- | --- | --- |
 | 原始研究范围 B0–B7 | 已定义 | `AGENTS.md` |
 | 项目骨架 / 单测 | 已合并、可安装、本地通过 | 起步包展平到仓库根目录；`python -m venv .venv && pip install -e '.[dev]'` 成功；`.venv/bin/python -m pytest -q` → 5 passed（pytest 9.2.0，CPU，Python 3.12.2） |
-| CI（GitHub Actions） | 待首次 run 确认 | `.github/workflows/ci.yml`，push 后触发 |
+| CI（GitHub Actions） | 已通过 | run 41281008328（commit `b97c19a`，job `CPU unit tests`: success） |
 | 服务器 torch / CUDA / PyG | 未验证 | 环境检查 JSON、GPU 上最小算子 |
 | STRING 两图 / ID 对齐 | 未开始 | 版本、节点/边/覆盖率统计、哈希 |
 | PIE DE 读取 / 标签定义 | 未开始 | schema 与阳性率报告 |
@@ -28,8 +28,8 @@
 
 ## 正在执行（最多 1–2 项）
 
-1. **M0 收尾**：确认首次 CI run 为绿；`AGENTS.entry.patch` 因上下文不匹配（原文件标题为加粗）改为手工插入后已删除。
-2. **M1**：训练服务器跑 `python scripts/check_environment.py --strict`；STRING/PIE 原始数据小样本核验，填写 `docs/DATA_CONTRACT.md` 待定项并锁定 D-005～D-008。
+1. **M0 已完成**：起步包合并 + 首次 CI 通过（run 41281008328）；`AGENTS.entry.patch` 因上下文不匹配（原文件标题为加粗）改为手工插入后已删除。
+2. **M1（下一步）**：训练服务器跑 `python scripts/check_environment.py --strict`；STRING/PIE 原始数据小样本核验，填写 `docs/DATA_CONTRACT.md` 待定项并锁定 D-005～D-008。
 
 ## 阻塞项/需两人敲定
 
