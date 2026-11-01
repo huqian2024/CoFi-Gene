@@ -1,0 +1,5 @@
+# B1 单图 A（STRING experimental）+ 2 层 GCN
+base: _base.yaml
+model:
+  name: b1
+  channels: [A]

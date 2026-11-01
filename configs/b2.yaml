@@ -1,0 +1,5 @@
+# B2 单图 B（STRING co-expression）+ 2 层 GCN
+base: _base.yaml
+model:
+  name: b2
+  channels: [B]

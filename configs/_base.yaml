@@ -1,0 +1,30 @@
+# 训练公共配置：B0-B3 全部继承此文件（`base:` 由 cofi_gene.config 解析）
+# 任何模型都不允许单独改 optim/data/runtime，否则消融不公平。
+model:
+  name: b3
+  hidden_dim: 128
+  num_layers: 2
+  dropout: 0.2
+  channels: [A, B]
+  fusion_dim: 128
+  edge_head: dot
+
+optim:
+  lr: 0.01
+  weight_decay: 0.0
+  epochs: 200
+  negatives_ratio: 1.0
+  eval_every: 10
+  early_stop_patience: 50
+  grad_clip: 5.0
+
+data:
+  processed_dir: data/processed/synthetic_v1
+  weight_mode: none
+
+runtime:
+  seed: 42
+  device: cpu
+  out_dir: runs
+  run_name: null
+  log_every: 10

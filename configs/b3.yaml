@@ -1,0 +1,5 @@
+# B3 双图 GCN + 拼接投影
+base: _base.yaml
+model:
+  name: b3
+  channels: [A, B]

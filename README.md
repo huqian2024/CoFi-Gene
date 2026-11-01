@@ -33,12 +33,55 @@ export HTTPS_PROXY=http://127.0.0.1:7890 HTTP_PROXY=http://127.0.0.1:7890
 
 工程起步包（`README.md`、`pyproject.toml`、`src/`、`tests/`、`scripts/`、`docs/`、`.github/`）已合并到仓库根目录；`AGENTS.md` 顶部已加入 Agent 工程维护入口，原 `AGENTS.entry.patch` 因上下文不匹配（标题为加粗）改为手工插入后删除。
 
-## 近期里程碑
+## 快速开始（当前已实现范围：数据管线 + B0–B3）
 
-1. `python scripts/check_environment.py --strict` 在训练服务器通过，并记录结果（服务器运维）。
-2. 下载/抽样检查 PIE 的 DE parquet 与 `gene_text`，STRING 的两个证据通道；锁定基因 ID 和标签规则（数据契约）。
-3. 先在小型合成图上实现 B0–B3 的训练/评估端到端，再用真实数据做小规模 smoke run。
-4. B4/B5 → B6/B7 → 下游 MLP → 完整多种子实验（见 `docs/ROADMAP.md`）。
+```bash
+python -m pip install -e '.[dev,data]'          # 数据管线 + 测试
+python -m pytest -q                              # 99 个用例（缺 torch 时训练用例自动 skip）
+
+# 1) 用合成数据把整条链路跑通（无需下载、无需 GPU）
+python scripts/make_synthetic_dataset.py --raw data/raw/synthetic_v1 \
+    --processed data/processed/synthetic_v1
+
+# 2) 训练上游模型（B0–B3）
+python -m cofi_gene.train --config configs/b3.yaml --seed 42
+# 产物：runs/<run_name>/{metrics.json, config.json, model.pt}
+
+# 3) 真实数据：先填 configs/data.yaml 的文件路径与已确认参数，再构建
+python scripts/build_dataset.py --config configs/data.yaml --out data/processed/real_v1
+```
+
+训练机需要单独安装 torch（按该机 CUDA 版本选择 wheel）：
+
+```bash
+pip install --index-url https://download.pytorch.org/whl/cpu torch   # CPU 机器示例
+```
+
+## 代码结构
+
+| 路径 | 作用 |
+| --- | --- |
+| `src/cofi_gene/string_io.py` | STRING 明细表流式读取，**只按单通道列**过滤（不用 combined score） |
+| `src/cofi_gene/gene_ids.py` | 蛋白 ID → 基因符号归一化、冲突计数 |
+| `src/cofi_gene/graph_build.py` | 去重/自环/权重策略、图统计、双图重合率 |
+| `src/cofi_gene/splits.py` | 边划分、按扰动目标分组、缺边模拟、双视图遮蔽 |
+| `src/cofi_gene/negative_sampling.py` | 避开全部已知正边的确定性负采样 |
+| `src/cofi_gene/features.py` | `gene_text` 读取与 3072→128（SVD/PCA，固定符号） |
+| `src/cofi_gene/pie_io.py` | PIE DE 表读取与**唯一**标签规则 |
+| `src/cofi_gene/dataset.py` | 数据集容器（含 `validate()` 泄漏防线）与存取 |
+| `src/cofi_gene/pipeline.py` | 原始文件 → 数据集 + 构建报告 |
+| `src/cofi_gene/models/` | `torch.sparse` 实现的 GCN、B3 拼接融合、边预测头、B0–B3 注册表 |
+| `src/cofi_gene/train.py` | 共同训练器（LP BCE + 固定负样本 + val 早停 + test 只评一次） |
+| `src/cofi_gene/synthetic.py` | 合成 STRING/PIE 文件生成器（含若干"陷阱"用于测试） |
+| `configs/` | `_base.yaml`、`b0–b3.yaml`、`data.yaml`、`data.synthetic.yaml` |
+| `scripts/` | `build_dataset.py`、`make_synthetic_dataset.py`、`inspect_pie_de.py`、`check_environment.py` |
+
+## 当前边界（务必区分"已实现"与"已验证"）
+
+- 已实现并测试：数据读取/对齐/划分/防泄漏/特征压缩/B0–B3 训练与评估，全部在**合成数据 + CPU** 上验证。
+- **未做**：真实 STRING/PIE 数据接入、GPU(5090) 验证、B4–B7、缺边鲁棒性、Gene ID 错位对照、下游 DE MLP、多种子汇总。
+- 待团队确认的参数见 `docs/DECISIONS.md`（D-005、D-009～D-018）。
+
 
 ## 协作原则
 

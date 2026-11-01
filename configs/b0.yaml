@@ -1,0 +1,5 @@
+# B0 原始 gene_text 特征（无 GCN），同一 LP 头与负样本作为特征基线
+base: _base.yaml
+model:
+  name: b0
+  channels: [A, B]

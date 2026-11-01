@@ -11,6 +11,7 @@ from random import Random
 from typing import Iterable
 
 Edge = tuple[int, int]
+THREE_WAY = ("train", "val", "test")
 
 
 @dataclass(frozen=True)
@@ -111,3 +112,52 @@ def validate_negative_edges(negatives: Iterable[Edge], all_positive_edges: Itera
         if e in seen:
             raise ValueError(f"duplicate negative edge: {e}")
         seen.add(e)
+
+
+def edge_set(edges: Iterable[Edge], num_nodes: int) -> frozenset:
+    """Canonical undirected view of an edge list, ready for set algebra."""
+    return frozenset(normalize_undirected_edges(edges, num_nodes))
+
+
+def remove_edge_pairs(edges: Iterable[Edge], pairs_to_remove: Iterable[Edge],
+                      num_nodes: int) -> tuple[Edge, ...]:
+    """Drop every edge whose canonical pair appears in ``pairs_to_remove``.
+
+    Used by the dual-view masked protocol: when graph B hides a gene pair as an
+    evaluation edge, the same pair must not stay visible in graph A's encoding
+    graph if the experiment claims "both views masked".
+    """
+    banned = edge_set(pairs_to_remove, num_nodes)
+    kept = (e for e in normalize_undirected_edges(edges, num_nodes) if e not in banned)
+    return tuple(kept)
+
+
+def simulate_missing_edges(visible_edges: Iterable[Edge], fraction: float, num_nodes: int,
+                           seed: int = 42) -> tuple[tuple[Edge, ...], tuple[Edge, ...]]:
+    """Deterministically drop ``fraction`` of *visible* edges for robustness tests.
+
+    Only pass the training/visible edges here: held-out evaluation edges are
+    already absent from the encoding graph, and removing them again would
+    silently change the evaluation set instead of the input information.
+
+    Returns ``(kept_edges, removed_edges)``.
+    """
+    if not 0.0 <= fraction < 1.0:
+        raise ValueError("fraction must be in [0, 1)")
+    items = list(normalize_undirected_edges(visible_edges, num_nodes))
+    if fraction == 0.0:
+        return tuple(items), ()
+    Random(seed).shuffle(items)
+    n_removed = int(round(len(items) * fraction))
+    if n_removed >= len(items):
+        raise ValueError("fraction would remove every visible edge")
+    removed = tuple(sorted(items[:n_removed]))
+    kept = tuple(sorted(items[n_removed:]))
+    return kept, removed
+
+
+def split_summary(split: ThreeWaySplit) -> dict[str, int]:
+    """Counts per partition, for logs and manifests."""
+    return {"train": len(split.train), "val": len(split.val), "test": len(split.test),
+            "total": len(split.train) + len(split.val) + len(split.test)}
+

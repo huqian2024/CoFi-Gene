@@ -4,18 +4,31 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cofi-gene"
-version = "0.0.1"
+version = "0.1.0"
 description = "CoFi-Gene: reproducible multi-graph gene embedding experiments"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+  "numpy>=1.26",
+  "pyyaml>=6",
+]
 
 [project.optional-dependencies]
+# Data pipeline (PIE DE parquet). Keep out of the core install so the CPU-only
+# split/leakage unit tests can run on a bare Python.
+data = ["pyarrow>=15"]
+# Upstream training. Install the wheel that matches the target machine
+# (CPU wheel for laptops, CUDA wheel for the RTX 5090 server).
+train = ["torch>=2.2"]
 dev = ["pytest>=8,<10"]
-data = ["pyarrow>=15", "numpy>=1.26"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "torch: requires the optional torch extra",
+  "data: requires the optional pyarrow extra",
+]
+

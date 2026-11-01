@@ -1,0 +1,35 @@
+# 合成数据管线配置：先用 scripts/make_synthetic_dataset.py 生成 raw 目录
+# 这些不是真实数据，只用于端到端验证与 CI。
+dataset_name: synthetic_v1
+
+string_links: data/raw/synthetic_v1/string_9606.protein.links.detailed.v12.0.txt.gz
+string_info: data/raw/synthetic_v1/string_9606.protein.info.v12.0.txt
+gene_text: data/raw/synthetic_v1/gene_text.npy
+gene_order: data/raw/synthetic_v1/gene_text.ids.txt
+
+de_tables:
+  K562: data/raw/synthetic_v1/pie/de/K562.parquet
+  RPE1: data/raw/synthetic_v1/pie/de/RPE1.parquet
+
+channel_column_a: experimental
+channel_column_b: coexpression
+# 阈值为 0 仅因为合成数据的通道分数是 400-999；真实数据必须由两人确认（D-005）
+min_score_a: 0
+min_score_b: 0
+weight_mode: none
+
+n_components: 16
+standardize_features: false
+
+# 标签规则尚未由团队锁定（D-012 待确认），这里用候选默认值
+p_adj_threshold: 0.05
+min_abs_log2fc: null
+
+train_fraction: 0.8
+val_fraction: 0.1
+split_seed: 42
+target_train_fraction: 0.7
+target_val_fraction: 0.15
+negatives_ratio: 1.0
+negative_seed: 42
+mask_other_view: false

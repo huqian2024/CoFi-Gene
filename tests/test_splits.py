@@ -1,7 +1,9 @@
 import pytest
 
-from cofi_gene.splits import (normalize_undirected_edges, split_edges,
-                              split_perturbation_targets, validate_negative_edges)
+from cofi_gene.splits import (edge_set, normalize_undirected_edges, remove_edge_pairs,
+                              simulate_missing_edges, split_edges,
+                              split_perturbation_targets, split_summary,
+                              validate_negative_edges)
 
 
 def test_edge_dedup_direction_and_self_loop():
@@ -42,3 +44,36 @@ def test_tiny_splits_raise_instead_of_silently_empty_validation():
         split_perturbation_targets(["A", "B"])
     with pytest.raises(ValueError, match="not enough"):
         split_edges([(0, 1), (1, 2)], 3)
+
+
+def test_dual_view_masking_removes_other_view_heldout_pairs():
+    visible = [(0, 1), (1, 2), (2, 3)]
+    heldout_other_view = [(2, 1), (3, 0)]
+    kept = remove_edge_pairs(visible, heldout_other_view, 4)
+    assert kept == ((0, 1), (2, 3))
+
+
+def test_simulate_missing_edges_only_touches_visible_edges_and_is_deterministic():
+    visible = [(i, i + 1) for i in range(20)]
+    kept_a, removed_a = simulate_missing_edges(visible, 0.3, 40, seed=7)
+    kept_b, removed_b = simulate_missing_edges(visible[::-1], 0.3, 40, seed=7)
+    assert (kept_a, removed_a) == (kept_b, removed_b)
+    assert set(kept_a).isdisjoint(removed_a)
+    assert set(kept_a) | set(removed_a) == set(visible)
+    assert len(removed_a) == 6
+
+
+def test_simulate_missing_edges_rejects_degenerate_fractions():
+    with pytest.raises(ValueError, match="fraction"):
+        simulate_missing_edges([(0, 1)], 1.0, 3)
+    with pytest.raises(ValueError, match="every visible edge"):
+        simulate_missing_edges([(0, 1), (1, 2)], 1.0 - 1e-12, 3)
+
+
+def test_edge_set_is_order_independent_and_split_summary_counts_all():
+    split = split_edges([(i, i + 1) for i in range(20)], 21, seed=3)
+    assert edge_set(list(split.train)[::-1], 21) == edge_set(split.train, 21)
+    summary = split_summary(split)
+    assert summary["total"] == 20
+    assert summary["train"] + summary["val"] + summary["test"] == 20
+

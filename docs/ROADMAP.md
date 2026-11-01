@@ -19,8 +19,31 @@
 - 下载一个 cell-line 的 PIE parquet 或获取其 schema，用 `inspect_pie_de.py` 做抽样检查。
 - 决定基因 ID 映射规则、标签阈值、128 维压缩方案；记录到决策表。然后才开始真模型训练。
 
-## 训练交付合同（后续实现）
+## 训练交付合同（B0–B3 已实现，B4–B7 待实现）
 
-计划的标准调用：`python -m cofi_gene.train --config configs/b0.yaml --seed 42`。**目前尚未实现，不能运行**。
+标准调用（已可用，需先构建数据集）：
+
+```bash
+python scripts/build_dataset.py --config configs/data.synthetic.yaml --out data/processed/synthetic_v1
+python -m cofi_gene.train --config configs/b3.yaml --seed 42
+```
+
+`python -m cofi_gene.train --config ... --seed ...` 支持 `--dataset/--device/--out-dir/--epochs/--run-name/--dry-run`。
+每个 run 在 `runs/<run_name>/` 下写 `metrics.json`（config、seed、dataset sha256、git commit、版本、val/test 指标、完整 history）、`config.json`、`model.pt`。
+B4–B7 目前会被注册表拒绝（`NotImplementedError`），以避免用占位实现产出消融表。
 
 训练方每个 run 需归档：git commit、config、seed、数据 manifest hash、Python/Torch/PyG/CUDA 版本、完整日志、validation/test metrics、checkpoint 路径、运行错误。测试集指标不用于调参。
+
+## 进度标记（2026-11-01）
+
+| 里程碑 | 代码侧 | 数据/训练侧 |
+| --- | --- | --- |
+| M0 | ✅ 完成（骨架、CI、环境探针） | ⏳ 5090 上 `--strict` 未跑 |
+| M1 | ✅ 代码完成（读取、对齐、contract、split 持久化、manifest） | ❌ 真实 STRING/PIE 未下载核验 |
+| M2 | ✅ 代码完成（共同训练器 + B0–B3，合成数据端到端 + 确定性） | ❌ 真实数据/GPU 试跑未开始 |
+| M3 | ⏳ 未开始（B4 Gate / B5 Attention） | — |
+| M4 | ⏳ 未开始（B6/B7 单轮反馈） | — |
+| M5–M8 | ⏳ 未开始 | — |
+
+下一步的三个前置条件：真实数据路径与阈值确认（D-005/D-011）、降维与标签规则确认（D-012/D-014/D-017）、训练预算固定（D-018）。
+

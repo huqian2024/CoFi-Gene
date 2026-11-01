@@ -37,3 +37,32 @@ PIE `de/<cell_line>.parquet` 公开的列包括：`target`（扰动目标）、`
 | PIE DE / preprocessed | 待填写 | 待填写 | 待填写 | 待填写 |
 
 不得将大型原始数据和授权密钥放入 Git 仓库；保存 manifest、可重现下载命令和转换脚本。
+
+## 4. 已实现的产物格式（v1，代码：`cofi_gene.pipeline` / `cofi_gene.dataset`）
+
+处理后的数据集写入一个目录（例如 `data/processed/<dataset>/`），包含三个文件：
+
+| 文件 | 内容 |
+|---|---|
+| `dataset.npz` | `X`；每个通道的 `<ch>_train` / `<ch>_val` / `<ch>_test`（`[2,E]` int64）、对应 `<ch>_*_w` 权重、`<ch>_neg_train/val/test`、`<ch>_encode` 与 `<ch>_encode_w`（编码器实际看到的图） |
+| `dataset.json` | `dataset_version`、`gene_ids`（唯一且顺序固定的基因序）、各通道构建统计、下游 `target_splits`、`meta`（通道列名、降维方式、split 决策） |
+| `manifest.json` | 输入文件的 sha256/字节数、`git_commit`、运行时版本、`command`、完整构建报告（基因选择、通道统计、重合率、split 摘要、下游覆盖率） |
+
+要点：
+
+- **节点顺序**只由 `gene_ids` 决定；特征、边、划分都按位置索引，任何环节不得自行重排。
+- **编码图与评估边分离**：`<ch>_encode` 默认等于 `<ch>_train`；验证/测试正边不会出现在其中（`CoFiDataset.validate()` 会直接报错）。
+- **负样本**在构建期一次性抽样并落盘，避开该通道全部已知正边（含隐藏的 val/test 正边），所有 B0–B7 共用。
+- **特征降维**只使用公开基因先验，绝不接触 PIE 的 DE 标签；`explained_variance_ratio` 记录在 manifest。
+
+## 5. 当前验证状态（必须区分真实与合成）
+
+| 项 | 状态 | 证据 |
+|---|---|---|
+| STRING 双通道解析、阈值、去重、自环、未知蛋白、combined-score 陷阱 | 已在**合成数据**上验证 | `tests/test_string_io.py`、`tests/test_pipeline_synthetic.py` |
+| 基因符号归一化与冲突计数 | 已在合成数据 + 单元测试验证 | `tests/test_gene_ids.py` |
+| 边划分 / 分组划分 / 负样本防泄漏 | 已实现并单测 | `tests/test_splits.py`、`tests/test_leakage.py` |
+| 3072→128 降维 | 已实现（SVD/PCA）并在合成矩阵上验证 | `tests/test_features.py` |
+| PIE DE 读取与标签规则 | 已实现，pyarrow 环境可跑 | `tests/test_pie_io.py` |
+| **真实 STRING/PIE 文件** | **未下载、未核验** | 第 3 节表格仍为空，需团队补齐 |
+
