@@ -22,8 +22,8 @@ def _config(model: str, out_dir, epochs: int = 4):
     })
 
 
-@pytest.mark.parametrize("model", ["b0", "b1", "b2", "b3"])
-def test_every_week2_model_trains_end_to_end(model, processed_dataset, tmp_path):
+@pytest.mark.parametrize("model", ["b0", "b1", "b2", "b3", "b4", "b5"])
+def test_every_registered_model_trains_end_to_end(model, processed_dataset, tmp_path):
     record = train_link_prediction(processed_dataset, _config(model, tmp_path))
     assert record["best_epoch"] >= 1
     assert np.isfinite(record["best_val_mean_ap"])
@@ -41,11 +41,13 @@ def test_every_week2_model_trains_end_to_end(model, processed_dataset, tmp_path)
     assert saved["notes"]
 
 
-CHANNEL_KEYS = {"b0": ("A", "B"), "b1": ("A",), "b2": ("B",), "b3": ("A", "B")}
+CHANNEL_KEYS = {"b0": ("A", "B"), "b1": ("A",), "b2": ("B",), "b3": ("A", "B"),
+                "b4": ("A", "B"), "b5": ("A", "B")}
 
 
-def test_training_is_deterministic_for_a_fixed_seed(processed_dataset, tmp_path):
-    config = _config("b3", tmp_path, epochs=2)
+@pytest.mark.parametrize("model", ["b3", "b4", "b5"])
+def test_training_is_deterministic_for_a_fixed_seed(model, processed_dataset, tmp_path):
+    config = _config(model, tmp_path, epochs=2)
     first = train_link_prediction(processed_dataset, config)
     second = train_link_prediction(processed_dataset, config)
     assert [h["train_loss"] for h in first["history"]] == \
@@ -71,6 +73,32 @@ def test_model_learns_above_the_prevalence_baseline(processed_dataset, tmp_path)
     record = train_link_prediction(processed_dataset, _config("b1", tmp_path, epochs=30))
     assert record["best_val_mean_ap"] > 0.65, record["best_val_mean_ap"]
     assert record["test"]["A"]["average_precision"] > 0.5
+
+
+def test_skip_test_flag_never_scores_the_test_split(processed_dataset, tmp_path):
+    """Week 3 smoke runs must be able to train without ever touching the test split."""
+    config = _config("b4", tmp_path, epochs=2)
+    record = train_link_prediction(processed_dataset, config, evaluate_test=False)
+    assert record["test"] is None
+    assert any("NOT scored" in note for note in record["notes"])
+    saved = json.loads((tmp_path / record["run_name"] / "metrics.json").read_text(
+        encoding="utf-8"))
+    assert saved["test"] is None
+    assert saved["val"] and saved["best_val_mean_ap"] == record["best_val_mean_ap"]
+    # ... while the default keeps the Week 2 behaviour unchanged.
+    with_test = train_link_prediction(processed_dataset, config, evaluate_test=True)
+    assert set(with_test["test"]) == set(CHANNEL_KEYS["b4"])
+
+
+def test_cli_skip_test_flag_is_accepted(processed_dir, tmp_path):
+    assert train_main(["--config", "configs/b5.yaml", "--dataset", str(processed_dir),
+                       "--out-dir", str(tmp_path), "--epochs", "2", "--seed", "3",
+                       "--run-name", "cli_b5_no_test", "--skip-test"]) == 0
+    saved = json.loads((tmp_path / "cli_b5_no_test" / "metrics.json").read_text(
+        encoding="utf-8"))
+    assert saved["test"] is None
+    assert saved["model"]["fusion_kind"] == "attention"
+    assert saved["model"]["edge_heads"] == "per_channel"
 
 
 def test_evaluate_split_uses_held_out_edges_only(processed_dataset):

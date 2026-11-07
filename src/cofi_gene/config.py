@@ -49,7 +49,11 @@ DEFAULTS: dict = {
 
 _ALLOWED = {
     "model": {"name", "hidden_dim", "num_layers", "dropout", "channels", "fusion_dim",
-              "edge_head"},
+              "edge_head",
+              # Optional Week 3 keys (B5). They are deliberately *not* in DEFAULTS:
+              # keeping them out means the resolved B0-B4 configs - and therefore
+              # their run names and recorded hashes - stay unchanged.
+              "attention_heads", "attention_dropout", "attention_residual"},
     "optim": {"lr", "weight_decay", "epochs", "negatives_ratio", "eval_every",
               "early_stop_patience", "grad_clip"},
     "data": {"processed_dir", "weight_mode"},
@@ -127,6 +131,20 @@ def validate_config(config: dict) -> None:
         raise ValueError("model.dropout must be in [0, 1)")
     if model["edge_head"] not in ("dot", "mlp"):
         raise ValueError("model.edge_head must be 'dot' or 'mlp'")
+    # Optional Week 3 keys: validated only when present (see _ALLOWED comment).
+    if "attention_heads" in model:
+        heads = model["attention_heads"]
+        if not isinstance(heads, int) or heads < 1:
+            raise ValueError("model.attention_heads must be a positive int")
+        if model["hidden_dim"] % heads:
+            raise ValueError(f"model.hidden_dim ({model['hidden_dim']}) must be divisible "
+                             f"by model.attention_heads ({heads})")
+    if "attention_dropout" in model and model["attention_dropout"] is not None:
+        if not 0.0 <= float(model["attention_dropout"]) < 1.0:
+            raise ValueError("model.attention_dropout must be in [0, 1)")
+    if "attention_residual" in model and model["attention_residual"] is not None:
+        if not isinstance(model["attention_residual"], bool):
+            raise ValueError("model.attention_residual must be true or false")
 
     optim = config["optim"]
     if float(optim["lr"]) <= 0:

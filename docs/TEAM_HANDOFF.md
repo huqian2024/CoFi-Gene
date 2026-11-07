@@ -19,12 +19,14 @@
 | 防泄漏检查（隐藏边不进编码图、负样本避开全部正边、目标不跨 split） | ✅ 代码完成且强制 | 数据集加载/构建时会直接报错，不是"靠自觉" |
 | PIE DE 读取 + 标签规则 | ✅ 代码完成 | 规则默认 `p_adj<0.05`，**待你确认**（D-014） |
 | B0–B3 训练与评估（AUPRC/AUROC） | ✅ 代码完成 | `python -m cofi_gene.train --config configs/b3.yaml` |
-| 可复现性 | ✅ 已验证 | 同 seed 两次运行，loss 与指标完全一致 |
+| **B4 门控融合 / B5 跨图注意力（Week 3 新增）** | ✅ 代码完成 | `configs/b4.yaml`（单层 Linear 门控）/ `configs/b5.yaml`（4 头 × 32 维、残差默认关）；详见 `docs/WEEK3_IMPLEMENTATION_REPORT.md` |
+| 可复现性 | ✅ 已验证 | 同 seed 两次运行，loss 与指标完全一致（B3/B4/B5 均有参数化用例） |
 
 **已验证的范围（不要夸大）**：以上全部只在 **合成假数据 + CPU** 上验证过。
-**没有验证**：任何真实 STRING/PIE 文件、任何 GPU（5090 一行代码都没跑过）、B4–B7、下游 DE 预测。
+**没有验证**：任何真实 STRING/PIE 文件、任何 GPU（5090 一行代码都没跑过）、B6/B7（Feedback）、下游 DE 预测。
 
-今天之后的规矩：**本周不再加新功能，未进入 Week 3。**
+Week 3 的规矩：**B4/B5 已实现，但门控/注意力/双图监督的具体形式是"工程默认"（D-019/D-020/D-021），
+需要你我确认后才会写进报告方法节；B6/B7 本周不做。**
 
 ---
 
@@ -130,7 +132,12 @@ python -m cofi_gene.train --config configs/b3.yaml --dataset data/processed/synt
    产出 `manifest.json`，其中能读到：节点数、两图边数、重合边比例、下游目标覆盖率。
 4. **P1 五项锁定**：D-012 / D-017 / D-011 / D-015 / D-018。
 
-满足后下一阶段（M3）才做：**B4 Gated Fusion + B5 Source-aware Attention**，并固定训练预算跑 B0–B5 首轮对比。
+满足后即可用**同一预算、同一划分**跑 B0–B5 首轮对比（B4/B5 代码已就绪）；这一步产出的才是能写进报告的
+上游 Link Prediction AUPRC 表。Week 3 新增的 D-019/D-020/D-021 需同时确认（否则 B4/B5 的方法描述口径不定）。
+
+Week 3 已完成（代码侧）：**B4 Feature-wise Gated Fusion（单层 Linear 门控）+ B5 对称双向 4 头 Cross-Graph Attention**，
+含 per-channel edge head 与统一 `[N,128]` 下游嵌入；合成数据上 B3/B4/B5 已用 `--skip-test` 端到端跑通（`runs/week3_smoke/`）。
+详见 `docs/WEEK3_IMPLEMENTATION_REPORT.md`。
 
 ---
 

@@ -1,6 +1,6 @@
-"""Upstream link-prediction trainer for B0-B3 (M2) with a reproducible CLI.
+"""Upstream link-prediction trainer for B0-B5 (M2/M3) with a reproducible CLI.
 
-    python -m cofi_gene.train --config configs/b3.yaml --seed 42
+    python -m cofi_gene.train --config configs/b5.yaml --seed 42
 
 Deliberate protocol choices (all recorded in the run JSON):
 
@@ -80,8 +80,10 @@ def evaluate_split(model, x, adjacencies, dataset: CoFiDataset, split: str) -> d
             positives = _edge_tensor(getattr(part, split), x.device)
             negatives = _edge_tensor(getattr(part, f"neg_{split}"), x.device)
             embeddings_channel = embeddings[channel]
-            positive_scores = model.score_edges(embeddings_channel, positives).cpu().numpy()
-            negative_scores = model.score_edges(embeddings_channel, negatives).cpu().numpy()
+            positive_scores = model.score_edges(embeddings_channel, positives,
+                                                channel=channel).cpu().numpy()
+            negative_scores = model.score_edges(embeddings_channel, negatives,
+                                                channel=channel).cpu().numpy()
             scores = np.concatenate([positive_scores, negative_scores])
             labels = np.concatenate([np.ones(positive_scores.size), np.zeros(negative_scores.size)])
             summary = binary_summary(scores, labels)
@@ -100,8 +102,14 @@ def _mean_primary(metrics: dict, key: str = "average_precision") -> float:
 
 
 def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None = None,
-                          out_dir: str | Path | None = None) -> dict:
-    """Full training loop; returns the metrics/provenance record written to disk."""
+                          out_dir: str | Path | None = None,
+                          evaluate_test: bool = True) -> dict:
+    """Full training loop; returns the metrics/provenance record written to disk.
+
+    ``evaluate_test=False`` skips the final test-split scoring. It exists so that a
+    Week 3 *smoke* run can be honest about never touching the test split; the
+    default (``True``) is the unchanged Week 2 behaviour.
+    """
     torch = _require_torch()
     from torch.nn import functional as F
 
@@ -120,7 +128,13 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
                         num_layers=int(model_cfg["num_layers"]),
                         dropout=float(model_cfg["dropout"]),
                         fusion_dim=int(model_cfg["fusion_dim"]),
-                        edge_head=model_cfg["edge_head"]).to(device_obj)
+                        edge_head=model_cfg["edge_head"],
+                        # B5 only; absent keys keep the module defaults so the
+                        # B0-B4 resolved configs (and their run names) are unchanged.
+                        attention_heads=int(model_cfg.get("attention_heads", 4)),
+                        attention_dropout=model_cfg.get("attention_dropout"),
+                        attention_residual=bool(model_cfg.get("attention_residual", False)),
+                        ).to(device_obj)
 
     x = torch.as_tensor(dataset.X, dtype=torch.float32, device=device_obj)
     encode_edges, encode_weights = {}, {}
@@ -151,8 +165,8 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
             positives = _edge_tensor(part.train, device_obj)
             negatives = _edge_tensor(part.neg_train, device_obj)
             logits = torch.cat([
-                model.score_edges(embeddings[channel], positives),
-                model.score_edges(embeddings[channel], negatives)])
+                model.score_edges(embeddings[channel], positives, channel=channel),
+                model.score_edges(embeddings[channel], negatives, channel=channel)])
             labels = torch.cat([torch.ones(positives.shape[1], device=device_obj),
                                 torch.zeros(negatives.shape[1], device=device_obj)])
             loss_sum = loss_sum + F.binary_cross_entropy_with_logits(logits, labels)
@@ -182,7 +196,8 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
     if best["state"] is not None:
         model.load_state_dict(best["state"])
     val_metrics = evaluate_split(model, x, adjacencies, dataset, "val")
-    test_metrics = evaluate_split(model, x, adjacencies, dataset, "test")
+    test_metrics = (evaluate_split(model, x, adjacencies, dataset, "test")
+                    if evaluate_test else None)
 
     target_dir = Path(out_dir or runtime["out_dir"])
     run_name = runtime.get("run_name") or (
@@ -203,6 +218,9 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
             "channels": list(model.channels),
             "parameter_count": model.parameter_count(),
             "output_dim": model.output_dim,
+            "fusion_kind": model.fusion_kind,
+            "edge_heads": ("per_channel" if model.channel_heads is not None
+                           else "shared"),
         },
         "dataset": {
             "processed_dir": str(processed),
@@ -217,7 +235,9 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
         "test": test_metrics,
         "history": history,
         "notes": [
-            "test split scored once with the best-validation checkpoint",
+            ("test split scored once with the best-validation checkpoint"
+             if evaluate_test else
+             "test split NOT scored: smoke run launched with evaluate_test=False"),
             "negatives reused from the dataset build so all models see the same draw",
         ],
     }
@@ -234,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     """CLI entry point: ``python -m cofi_gene.train --config ... --seed ...``."""
     parser = argparse.ArgumentParser(
         prog="cofi_gene.train",
-        description="Train one upstream model (B0-B3) on a processed CoFi-Gene dataset.")
+        description="Train one upstream model (B0-B5) on a processed CoFi-Gene dataset.")
     parser.add_argument("--config", required=True, help="YAML config path")
     parser.add_argument("--seed", type=int, default=None, help="override runtime.seed")
     parser.add_argument("--dataset", default=None, help="override data.processed_dir")
@@ -244,6 +264,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--epochs", type=int, default=None, help="override optim.epochs")
     parser.add_argument("--dry-run", action="store_true",
                         help="validate config and dataset, print a summary, then exit")
+    parser.add_argument("--skip-test", action="store_true",
+                        help="do not score the test split at all (Week 3 smoke runs)")
     args = parser.parse_args(argv)
 
     overrides: dict = {}
@@ -269,13 +291,15 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         record = train_link_prediction(dataset, config, device=args.device,
-                                       out_dir=args.out_dir)
+                                       out_dir=args.out_dir,
+                                       evaluate_test=not args.skip_test)
     except ImportError as exc:  # torch missing
         print(f"[cofi_gene.train] {exc}", file=sys.stderr)
         return 2
 
-    test_ap = {channel: metrics.get("average_precision")
-               for channel, metrics in record["test"].items()}
+    test_ap = ("skipped (--skip-test)" if record["test"] is None else
+               {channel: metrics.get("average_precision")
+                for channel, metrics in record["test"].items()})
     print(f"[cofi_gene.train] run={record['run_name']} "
           f"best_epoch={record['best_epoch']} "
           f"val_mean_ap={record['best_val_mean_ap']:.4f} "

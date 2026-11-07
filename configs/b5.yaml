@@ -1,0 +1,13 @@
+# B5 双图 GCN + 对称双向 Cross-Graph Attention（本项目核心研究点）
+# 与 B3/B4 共用同一 optim/data/runtime（来自 _base.yaml），保证消融对比公平。
+# 4 头 × 32 维（d=128），每个 Query 的候选项 = 自身图 + 另一图（2 个）。
+# 不写 attention_dropout：让它跟随 model.dropout，保证与 B4 的正则强度一致。
+# attention_residual 见 docs/DECISIONS.md D-020：AGENTS.md 4.2 提到残差，
+# 本周指令的公式未含残差，因此默认关闭并显式记录，待两人确认。
+base: _base.yaml
+model:
+  name: b5
+  channels: [A, B]
+  attention_heads: 4
+  attention_residual: false
+

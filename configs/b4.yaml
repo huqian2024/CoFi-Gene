@@ -1,0 +1,8 @@
+# B4 双图 GCN + Feature-wise Gated Fusion（学习式门控融合基线）
+# 与 B3 共用同一 optim/data/runtime（来自 _base.yaml），保证消融对比公平。
+# 门控 = 单个 Linear(2d -> d) + Sigmoid（无隐藏层），见 docs/WEEK3_IMPLEMENTATION_REPORT.md §5。
+base: _base.yaml
+model:
+  name: b4
+  channels: [A, B]
+

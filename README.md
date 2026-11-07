@@ -4,7 +4,9 @@
 
 **先读**：`AGENTS.md`（研究范围与 B0–B7 设计）→ [`docs/STATUS.md`](docs/STATUS.md)（当前事实与下一步）→ [`docs/DECISIONS.md`](docs/DECISIONS.md)（已锁定及待确认决定）→ [`docs/DATA_CONTRACT.md`](docs/DATA_CONTRACT.md)（数据约定）→ [`docs/TEAM_HANDOFF.md`](docs/TEAM_HANDOFF.md)（队友视角交接：已完成/需确认/需准备/需验证）。
 
-> 当前状态：数据管线与 B0–B3 已实现，并在**合成数据 + CPU** 上验证；**真实 STRING/PIE 数据与 GPU(5090) 均未验证**。详见 `docs/STATUS.md` 的"四层状态区分"。
+> 当前状态：数据管线、B0–B3（Week 2）与 **B4/B5（Week 3：Gated Fusion / Cross-Graph Attention）** 已实现，
+> 并在**合成数据 + CPU** 上验证；**真实 STRING/PIE 数据与 GPU(5090) 均未验证**；B6/B7（Feedback）尚未实现。
+> 详见 `docs/STATUS.md` 的"四层状态区分"与 `docs/WEEK3_IMPLEMENTATION_REPORT.md`。
 
 ## 研究边界
 
@@ -33,18 +35,20 @@ export HTTPS_PROXY=http://127.0.0.1:7890 HTTP_PROXY=http://127.0.0.1:7890
 
 工程起步包（`README.md`、`pyproject.toml`、`src/`、`tests/`、`scripts/`、`docs/`、`.github/`）已合并到仓库根目录；`AGENTS.md` 顶部已加入 Agent 工程维护入口，原 `AGENTS.entry.patch` 因上下文不匹配（标题为加粗）改为手工插入后删除。
 
-## 快速开始（当前已实现范围：数据管线 + B0–B3）
+## 快速开始（当前已实现范围：数据管线 + B0–B5）
 
 ```bash
 python -m pip install -e '.[dev,data]'          # 数据管线 + 测试
-python -m pytest -q                              # 99 个用例（缺 torch 时训练用例自动 skip）
+python -m pytest -q                              # 147 个用例（缺 torch 时训练用例自动 skip）
 
 # 1) 用合成数据把整条链路跑通（无需下载、无需 GPU）
 python scripts/make_synthetic_dataset.py --raw data/raw/synthetic_v1 \
     --processed data/processed/synthetic_v1
 
-# 2) 训练上游模型（B0–B3）
-python -m cofi_gene.train --config configs/b3.yaml --seed 42
+# 2) 训练上游模型（B0–B5）
+python -m cofi_gene.train --config configs/b3.yaml --seed 42   # 拼接基线
+python -m cofi_gene.train --config configs/b4.yaml --seed 42   # Gated Fusion
+python -m cofi_gene.train --config configs/b5.yaml --seed 42   # Cross-Graph Attention
 # 产物：runs/<run_name>/{metrics.json, config.json, model.pt}
 
 # 3) 真实数据：先填 configs/data.yaml 的文件路径与已确认参数，再构建
@@ -70,17 +74,19 @@ pip install --index-url https://download.pytorch.org/whl/cpu torch   # CPU 机�
 | `src/cofi_gene/pie_io.py` | PIE DE 表读取与**唯一**标签规则 |
 | `src/cofi_gene/dataset.py` | 数据集容器（含 `validate()` 泄漏防线）与存取 |
 | `src/cofi_gene/pipeline.py` | 原始文件 → 数据集 + 构建报告 |
-| `src/cofi_gene/models/` | `torch.sparse` 实现的 GCN、B3 拼接融合、边预测头、B0–B3 注册表 |
+| `src/cofi_gene/models/` | `torch.sparse` 实现的 GCN、B3 拼接融合、B4 门控融合、B5 跨图注意力、边预测头、B0–B5 注册表 |
 | `src/cofi_gene/train.py` | 共同训练器（LP BCE + 固定负样本 + val 早停 + test 只评一次） |
 | `src/cofi_gene/synthetic.py` | 合成 STRING/PIE 文件生成器（含若干"陷阱"用于测试） |
-| `configs/` | `_base.yaml`、`b0–b3.yaml`、`data.yaml`、`data.synthetic.yaml` |
+| `configs/` | `_base.yaml`、`b0–b5.yaml`、`data.yaml`、`data.synthetic.yaml` |
 | `scripts/` | `build_dataset.py`、`make_synthetic_dataset.py`、`inspect_pie_de.py`、`check_environment.py` |
 
 ## 当前边界（务必区分"已实现"与"已验证"）
 
-- 已实现并测试：数据读取/对齐/划分/防泄漏/特征压缩/B0–B3 训练与评估，全部在**合成数据 + CPU** 上验证。
-- **未做**：真实 STRING/PIE 数据接入、GPU(5090) 验证、B4–B7、缺边鲁棒性、Gene ID 错位对照、下游 DE MLP、多种子汇总。
-- 待团队确认的参数见 `docs/DECISIONS.md`（D-005、D-009～D-018）。
+- 已实现并测试：数据读取/对齐/划分/防泄漏/特征压缩/**B0–B5 训练与评估**，全部在**合成数据 + CPU** 上验证。
+- **未做**：真实 STRING/PIE 数据接入、GPU(5090) 验证、B6/B7（Graph Feedback）、缺边鲁棒性、Gene ID 错位对照、
+  下游 DE MLP、多种子汇总。
+- 待团队确认的参数见 `docs/DECISIONS.md`（D-005、D-009～D-018，以及 Week 3 新增的 D-019～D-021）。
+- Week 3 的实现细节、公式、参数统计与已知限制见 `docs/WEEK3_IMPLEMENTATION_REPORT.md`。
 
 
 ## 协作原则

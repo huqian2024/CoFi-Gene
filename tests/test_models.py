@@ -75,13 +75,16 @@ def test_edge_heads_score_pairs():
 
 @pytest.mark.parametrize("name", IMPLEMENTED_MODELS)
 def test_registry_builds_every_implemented_model(name):
-    model = build_model(name, feature_dim=8, hidden_dim=6, fusion_dim=6, dropout=0.0)
+    # hidden_dim=8 is divisible by the 4 attention heads of B5 (Week 3), and
+    # feature_dim=4 != fusion_dim keeps B0's input projection non-trivial. Every
+    # model therefore lands on 8 wide, so the Week 2 assertions are unchanged.
+    model = build_model(name, feature_dim=4, hidden_dim=8, fusion_dim=8, dropout=0.0)
     adjacency = normalized_adjacency(torch.tensor([[0, 1], [1, 2]]), None, num_nodes=4)
-    x = torch.randn(4, 8)
+    x = torch.randn(4, 4)
     outputs = model(x, {channel: adjacency for channel in model.channels})
     assert set(outputs) == set(model.channels)
     for embedding in outputs.values():
-        assert embedding.shape == (4, 6)
+        assert embedding.shape == (4, 8)
     assert model.parameter_count() > 0
     assert model.head is not None
 

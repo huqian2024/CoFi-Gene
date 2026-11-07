@@ -18,7 +18,7 @@ def test_every_shipped_config_is_valid():
     from pathlib import Path
 
     config_dir = Path(__file__).resolve().parents[1] / "configs"
-    for name in ("b0", "b1", "b2", "b3"):
+    for name in ("b0", "b1", "b2", "b3", "b4", "b5"):
         config = load_config(config_dir / f"{name}.yaml")
         assert config["model"]["name"] == name
         assert tuple(config["model"]["channels"]) == CHANNEL_SETS[name]
@@ -56,14 +56,14 @@ def test_channel_mismatch_and_planned_models_are_rejected(tmp_path):
     path = _write(tmp_path / "b2.yaml", {"model": {"name": "b2", "channels": ["A"]}})
     with pytest.raises(ValueError, match="uses channels"):
         load_config(path)
-    path = _write(tmp_path / "b5.yaml", {"model": {"name": "b5", "channels": ["A", "B"]}})
+    path = _write(tmp_path / "b6.yaml", {"model": {"name": "b6", "channels": ["A", "B"]}})
     config = load_config(path)          # config layer accepts planned models...
-    assert config["model"]["name"] == "b5"
+    assert config["model"]["name"] == "b6"
     pytest.importorskip("torch")        # ...but the model factory refuses to fake them
     from cofi_gene.models import build_model
 
     with pytest.raises(NotImplementedError, match="not implemented yet"):
-        build_model("b5", feature_dim=8)
+        build_model("b6", feature_dim=8)
 
 
 def test_value_ranges_are_validated():
@@ -79,6 +79,32 @@ def test_value_ranges_are_validated():
     bad["model"]["edge_head"] = "transformer"
     with pytest.raises(ValueError, match="edge_head"):
         validate_config(bad)
+
+
+def test_week3_optional_model_keys_are_validated(tmp_path):
+    """B4/B5 knobs are optional and strictly checked; B0-B3 configs stay untouched."""
+    from pathlib import Path
+
+    config_dir = Path(__file__).resolve().parents[1] / "configs"
+    b3 = load_config(config_dir / "b3.yaml")
+    # The Week 2 configs must not grow new keys, otherwise their recorded run
+    # names / hashes would silently change.
+    assert set(b3["model"]) == set(DEFAULTS["model"])
+    assert "attention_heads" not in b3["model"]
+
+    path = _write(tmp_path / "b5.yaml", {"model": {"name": "b5", "channels": ["A", "B"],
+                                                   "hidden_dim": 128,
+                                                   "attention_heads": 3}})
+    with pytest.raises(ValueError, match="divisible"):
+        load_config(path)
+    path = _write(tmp_path / "b5b.yaml", {"model": {"name": "b5", "channels": ["A", "B"],
+                                                    "attention_dropout": 1.0}})
+    with pytest.raises(ValueError, match="attention_dropout"):
+        load_config(path)
+    path = _write(tmp_path / "b5c.yaml", {"model": {"name": "b5", "channels": ["A", "B"],
+                                                    "attention_residual": "sometimes"}})
+    with pytest.raises(ValueError, match="attention_residual"):
+        load_config(path)
 
 
 def test_missing_file_and_bad_payload(tmp_path):

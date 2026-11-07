@@ -12,11 +12,11 @@
 ### 工程命令速查（不改变研究范围）
 
 - 安装：`python -m pip install -e '.[dev,data]'`；上游训练另装 `.[train]`（CPU 机器：`pip install --index-url https://download.pytorch.org/whl/cpu torch`）。
-- 测试：`python -m pytest -q`（99 个用例；缺少 torch / pyarrow 时相关用例自动 skip）。
+- 测试：`python -m pytest -q`（147 个用例；缺少 torch / pyarrow 时相关用例自动 skip）。
 - 合成数据端到端：`python scripts/make_synthetic_dataset.py --raw data/raw/synthetic_v1 --processed data/processed/synthetic_v1`
 - 真实数据构建：填好 `configs/data.yaml` 后 `python scripts/build_dataset.py --config configs/data.yaml --out data/processed/<name>`
-- 训练：`python -m cofi_gene.train --config configs/b3.yaml --seed 42`（产物在 `runs/<run_name>/`）
-- 目前只实现 **B0–B3**；B4–B7 在 `cofi_gene.models.build_model` 中主动抛 `NotImplementedError`，禁止用占位实现产出消融表。
+- 训练：`python -m cofi_gene.train --config configs/b3.yaml --seed 42`（产物在 `runs/<run_name>/`；B4/B5 用 `configs/b4.yaml`、`configs/b5.yaml`）
+- 目前实现 **B0–B5**（B4 门控融合、B5 跨图注意力）；**B6/B7 仍在 `cofi_gene.models.build_model` 中主动抛 `NotImplementedError`**，禁止用占位实现产出消融表。Week 3 细节见 `docs/WEEK3_IMPLEMENTATION_REPORT.md`。
 
 **Cross-Graph Attention and Feedback-Guided Gene Embedding Learning**
 

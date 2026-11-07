@@ -42,3 +42,12 @@ jobs:
             --dataset data/processed/ci_synthetic --out-dir runs/ci --epochs 4 \
             --run-name ci_b3
           test -f runs/ci/ci_b3/metrics.json
+          # Week 3 models: B4 (gated fusion) and B5 (cross-graph attention)
+          python -m cofi_gene.train --config configs/b4.yaml \
+            --dataset data/processed/ci_synthetic --out-dir runs/ci --epochs 4 \
+            --run-name ci_b4
+          python -m cofi_gene.train --config configs/b5.yaml \
+            --dataset data/processed/ci_synthetic --out-dir runs/ci --epochs 4 \
+            --run-name ci_b5
+          test -f runs/ci/ci_b4/metrics.json
+          test -f runs/ci/ci_b5/metrics.json
