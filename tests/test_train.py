@@ -22,7 +22,7 @@ def _config(model: str, out_dir, epochs: int = 4):
     })
 
 
-@pytest.mark.parametrize("model", ["b0", "b1", "b2", "b3", "b4", "b5"])
+@pytest.mark.parametrize("model", ["b0", "b1", "b2", "b3", "b4", "b5", "b6", "b7"])
 def test_every_registered_model_trains_end_to_end(model, processed_dataset, tmp_path):
     record = train_link_prediction(processed_dataset, _config(model, tmp_path))
     assert record["best_epoch"] >= 1
@@ -42,10 +42,10 @@ def test_every_registered_model_trains_end_to_end(model, processed_dataset, tmp_
 
 
 CHANNEL_KEYS = {"b0": ("A", "B"), "b1": ("A",), "b2": ("B",), "b3": ("A", "B"),
-                "b4": ("A", "B"), "b5": ("A", "B")}
+                "b4": ("A", "B"), "b5": ("A", "B"), "b6": ("A", "B"), "b7": ("A", "B")}
 
 
-@pytest.mark.parametrize("model", ["b3", "b4", "b5"])
+@pytest.mark.parametrize("model", ["b3", "b4", "b5", "b6"])
 def test_training_is_deterministic_for_a_fixed_seed(model, processed_dataset, tmp_path):
     config = _config(model, tmp_path, epochs=2)
     first = train_link_prediction(processed_dataset, config)

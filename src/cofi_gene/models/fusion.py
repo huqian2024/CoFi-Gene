@@ -2,8 +2,8 @@
 
 M2 (Week 2) needs the concatenation baseline (B3). M3 (Week 3) adds the gated
 fusion baseline (B4). The source-aware attention (B5) lives in
-:mod:`cofi_gene.models.attention` because it is a larger module; B6/B7 (one-step
-graph feedback) are still refused by `build_model`.
+:mod:`cofi_gene.models.attention` because it is a larger module; B6/B7 (Week 4)
+re-use B5/B4 plus :mod:`cofi_gene.models.feedback`, without touching these maths.
 
 B3 replaces both channel embeddings with one shared vector; B4 does the same but
 learns the mixing weight, and B5 keeps two source-specific vectors that the model

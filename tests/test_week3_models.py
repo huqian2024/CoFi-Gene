@@ -302,19 +302,19 @@ def test_attention_heads_are_configurable():
 
 
 # ------------------------------------------------- registry / integration glue
-def test_registry_advertises_b4_and_b5_only_as_implemented():
-    for name in WEEK3_MODELS:
+def test_registry_advertises_b4_b5_b6_b7_as_implemented():
+    for name in WEEK3_MODELS + ("b6", "b7"):
         assert name in IMPLEMENTED_MODELS
-        assert name not in PLANNED_MODELS
-    # B6/B7 stay refused until the one-step feedback module exists (M4).
-    assert tuple(PLANNED_MODELS) == ("b6", "b7")
-    for name in PLANNED_MODELS:
-        with pytest.raises(NotImplementedError, match="not implemented yet"):
+    # Nothing is refused any more; unknown names still raise.
+    assert tuple(PLANNED_MODELS) == ()
+    for name in ("b8", "b9"):
+        with pytest.raises(NotImplementedError, match="not implemented"):
             build_model(name, feature_dim=8)
 
 
 @pytest.mark.parametrize("name,fusion_kind", [("b3", "concat"), ("b4", "gate"),
-                                              ("b5", "attention")])
+                                              ("b5", "attention"),
+                                              ("b6", "attention"), ("b7", "gate")])
 def test_fusion_kind_is_reported_per_model(name, fusion_kind):
     model = build_model(name, feature_dim=8, hidden_dim=8, fusion_dim=8, dropout=0.0)
     assert model.fusion_kind == fusion_kind

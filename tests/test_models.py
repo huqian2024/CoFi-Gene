@@ -81,6 +81,10 @@ def test_registry_builds_every_implemented_model(name):
     model = build_model(name, feature_dim=4, hidden_dim=8, fusion_dim=8, dropout=0.0)
     adjacency = normalized_adjacency(torch.tensor([[0, 1], [1, 2]]), None, num_nodes=4)
     x = torch.randn(4, 4)
+    if model.uses_feedback:  # B6/B7 additionally need the masked training graph
+        edges = torch.tensor([[0, 1], [1, 2]])
+        model.set_encoding_graphs({channel: edges for channel in model.channels},
+                                  {channel: torch.ones(2) for channel in model.channels}, 4)
     outputs = model(x, {channel: adjacency for channel in model.channels})
     assert set(outputs) == set(model.channels)
     for embedding in outputs.values():
@@ -113,10 +117,17 @@ def test_b1_requires_its_own_channel_only():
         model(torch.randn(4, 8), {"B": adjacency})
 
 
-@pytest.mark.parametrize("name", PLANNED_MODELS)
-def test_planned_models_are_refused_with_a_clear_message(name):
+@pytest.mark.parametrize("name", ["b8", "b9"])
+def test_unknown_models_are_refused_with_a_clear_message(name):
     with pytest.raises(NotImplementedError, match=f"{name!r} is not implemented"):
         build_model(name, feature_dim=8)
+
+
+def test_feedback_models_are_implemented_but_need_an_encoding_graph():
+    for name in ("b6", "b7"):
+        model = build_model(name, feature_dim=8, hidden_dim=8, fusion_dim=8)
+        assert model.feedback is not None
+        assert model.parameter_count() > 0
 
 
 def test_build_adjacencies_helper_covers_requested_channels():

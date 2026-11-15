@@ -53,7 +53,10 @@ _ALLOWED = {
               # Optional Week 3 keys (B5). They are deliberately *not* in DEFAULTS:
               # keeping them out means the resolved B0-B4 configs - and therefore
               # their run names and recorded hashes - stay unchanged.
-              "attention_heads", "attention_dropout", "attention_residual"},
+              "attention_heads", "attention_dropout", "attention_residual",
+              # Optional Week 4 keys (B6/B7 one-step edge-weight feedback). Same
+              # rule: absent from DEFAULTS so B0-B5 hashes are untouched.
+              "feedback_alpha", "feedback_margin"},
     "optim": {"lr", "weight_decay", "epochs", "negatives_ratio", "eval_every",
               "early_stop_patience", "grad_clip"},
     "data": {"processed_dir", "weight_mode"},
@@ -145,6 +148,15 @@ def validate_config(config: dict) -> None:
     if "attention_residual" in model and model["attention_residual"] is not None:
         if not isinstance(model["attention_residual"], bool):
             raise ValueError("model.attention_residual must be true or false")
+    # Optional Week 4 keys (B6/B7 feedback): validated only when present.
+    if "feedback_alpha" in model:
+        alpha = float(model["feedback_alpha"])
+        if alpha < 0.0:
+            raise ValueError("model.feedback_alpha must be >= 0 (0 disables the update)")
+    if "feedback_margin" in model:
+        margin = float(model["feedback_margin"])
+        if not 0.0 <= margin <= 1.0:
+            raise ValueError("model.feedback_margin must be in [0, 1]")
 
     optim = config["optim"]
     if float(optim["lr"]) <= 0:

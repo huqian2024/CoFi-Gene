@@ -1,4 +1,4 @@
-"""Upstream link-prediction trainer for B0-B5 (M2/M3) with a reproducible CLI.
+"""Upstream link-prediction trainer for B0-B7 (M2/M3/M4) with a reproducible CLI.
 
     python -m cofi_gene.train --config configs/b5.yaml --seed 42
 
@@ -134,6 +134,9 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
                         attention_heads=int(model_cfg.get("attention_heads", 4)),
                         attention_dropout=model_cfg.get("attention_dropout"),
                         attention_residual=bool(model_cfg.get("attention_residual", False)),
+                        # B6/B7 only; absent keys keep the module defaults.
+                        feedback_alpha=float(model_cfg.get("feedback_alpha", 0.1)),
+                        feedback_margin=float(model_cfg.get("feedback_margin", 0.5)),
                         ).to(device_obj)
 
     x = torch.as_tensor(dataset.X, dtype=torch.float32, device=device_obj)
@@ -144,6 +147,13 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
         encode_weights[channel] = torch.as_tensor(part.encode_weights, dtype=torch.float32,
                                                   device=device_obj)
     adjacencies = build_adjacencies(encode_edges, encode_weights, dataset.num_nodes)
+    # B6/B7 additionally need the *masked training graph* itself (edge_index +
+    # channel weights) to score and reweight it. This is `encode_edges`, i.e. the
+    # graph the encoder is allowed to see -- never part.train/val/test, which are
+    # supervision positives (CoFiDataset.validate() already guarantees the held-out
+    # positives are absent from encode_edges).
+    if getattr(model, "uses_feedback", False):
+        model.set_encoding_graphs(encode_edges, encode_weights, dataset.num_nodes)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=float(optim_cfg["lr"]),
                                  weight_decay=float(optim_cfg["weight_decay"]))
@@ -221,6 +231,12 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
             "fusion_kind": model.fusion_kind,
             "edge_heads": ("per_channel" if model.channel_heads is not None
                            else "shared"),
+            # Only B6/B7 record these, so B0-B5 metrics.json stay byte-identical.
+            **({"uses_feedback": True,
+                "feedback": {"alpha": model.feedback.alpha,
+                             "margin": model.feedback.margin,
+                             "base_model": model.base_name}}
+               if getattr(model, "uses_feedback", False) else {}),
         },
         "dataset": {
             "processed_dir": str(processed),
@@ -254,7 +270,7 @@ def main(argv: list[str] | None = None) -> int:
     """CLI entry point: ``python -m cofi_gene.train --config ... --seed ...``."""
     parser = argparse.ArgumentParser(
         prog="cofi_gene.train",
-        description="Train one upstream model (B0-B5) on a processed CoFi-Gene dataset.")
+        description="Train one upstream model (B0-B7) on a processed CoFi-Gene dataset.")
     parser.add_argument("--config", required=True, help="YAML config path")
     parser.add_argument("--seed", type=int, default=None, help="override runtime.seed")
     parser.add_argument("--dataset", default=None, help="override data.processed_dir")

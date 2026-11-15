@@ -1,0 +1,11 @@
+# B7 = B4 Feature-wise Gated Fusion + One-Step Graph Feedback（Week 4 / M4）
+# 与 B4 共用同一 optim/data/runtime（来自 _base.yaml），只多一次反馈步：
+#   p = sigmoid(detach(head(H^(1))))，w' = clamp(w*(1+alpha*(2p-1)), (1-margin)w, (1+margin)w)
+# 只重加权「已遮蔽的训练编码图」的既有边，不补边（D-022）；反馈模块无参数。
+# 门控本身不变（单个 Linear(2d->d)+Sigmoid、单融合向量），见 docs/DECISIONS.md D-019。
+base: _base.yaml
+model:
+  name: b7
+  channels: [A, B]
+  feedback_alpha: 0.1
+  feedback_margin: 0.5

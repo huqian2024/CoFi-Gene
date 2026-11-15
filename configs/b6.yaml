@@ -1,0 +1,12 @@
+# B6 = B5 对称双向 Cross-Graph Attention + One-Step Graph Feedback（Week 4 / M4）
+# 与 B5 共用同一 optim/data/runtime（来自 _base.yaml），只多一次反馈步：
+#   p = sigmoid(detach(head(H^(1))))，w' = clamp(w*(1+alpha*(2p-1)), (1-margin)w, (1+margin)w)
+# 只重加权「已遮蔽的训练编码图」的既有边，不补边（D-022）；反馈模块无参数。
+base: _base.yaml
+model:
+  name: b6
+  channels: [A, B]
+  attention_heads: 4
+  attention_residual: false
+  feedback_alpha: 0.1
+  feedback_margin: 0.5

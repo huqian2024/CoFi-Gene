@@ -52,18 +52,26 @@ def test_unknown_keys_are_rejected_instead_of_ignored(tmp_path):
         load_config(path)
 
 
-def test_channel_mismatch_and_planned_models_are_rejected(tmp_path):
+def test_channel_mismatch_is_rejected_and_feedback_configs_load(tmp_path):
     path = _write(tmp_path / "b2.yaml", {"model": {"name": "b2", "channels": ["A"]}})
     with pytest.raises(ValueError, match="uses channels"):
         load_config(path)
-    path = _write(tmp_path / "b6.yaml", {"model": {"name": "b6", "channels": ["A", "B"]}})
-    config = load_config(path)          # config layer accepts planned models...
+    # B6/B7 are implemented models now; the config layer accepts their optional keys.
+    path = _write(tmp_path / "b6.yaml", {"model": {"name": "b6", "channels": ["A", "B"],
+                                                   "feedback_alpha": 0.1,
+                                                   "feedback_margin": 0.5}})
+    config = load_config(path)
     assert config["model"]["name"] == "b6"
-    pytest.importorskip("torch")        # ...but the model factory refuses to fake them
+    assert config["model"]["feedback_alpha"] == 0.1
+    bad = _write(tmp_path / "bad_b7.yaml", {"model": {"name": "b7", "channels": ["A", "B"],
+                                                      "feedback_margin": 2.0}})
+    with pytest.raises(ValueError, match="feedback_margin"):
+        load_config(bad)
+    pytest.importorskip("torch")
     from cofi_gene.models import build_model
 
-    with pytest.raises(NotImplementedError, match="not implemented yet"):
-        build_model("b6", feature_dim=8)
+    model = build_model("b6", feature_dim=8, hidden_dim=8, fusion_dim=8)
+    assert model.uses_feedback
 
 
 def test_value_ranges_are_validated():
