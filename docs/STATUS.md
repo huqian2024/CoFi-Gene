@@ -1,14 +1,25 @@
 # 项目状态（每次合并 PR 后更新）
 
-最后更新：2026-11-07（**Week 3 / M3 代码完成**：B4 Gated Fusion、B5 Cross-Graph Attention 已实现并通过测试与冒烟训练；仍未接触真实数据与 GPU）
+最后更新：2026-11-15（**分支管理**：`main` 已快进合并 Week 2 + Week 3，147 测试通过；代码内容仍为 2026-11-07 的 Week 3 / M3 状态，未接触真实数据与 GPU）
 阶段：**M3 代码完成（合成数据验证）→ B6/B7（Feedback）尚未开始**
 详细报告：`docs/WEEK3_IMPLEMENTATION_REPORT.md`
+
+## 分支管理（2026-11-15）
+
+| 项 | 值 |
+| --- | --- |
+| 结论 | `main` 已**快进合并** Week 2 + Week 3 全部成果，不再是停在 M0 的 `dfa496e` |
+| 合并方式 | `git merge --ff-only feat/week2-data-pipeline` → `dfa496e..b875b7e`，4 个提交、57 文件、+6028/−50 |
+| 合并后验证 | `.venv/bin/python -m pytest -q` → **147 passed**（4.60 s，CPU，torch 2.15.0+cpu） |
+| 远程状态 | `origin/main` 已推送到同一提交；`push` 会触发 CI 两个 job（`push` 无分支过滤） |
+| 开发分支 | `feat/week2-data-pipeline` 保留（与 `main` 同提交，名已过期，勿再往上提交）；**Week 4 / M4 从 `main` 切新分支** |
+| 未做 | 未 force push、未删除任何分支、未改动历史提交、未提交真实数据/权重（`data/`、`runs/` 仍在 `.gitignore`） |
 
 ## Week 3 交付（2026-11-07）
 
 | 项 | 值 |
 | --- | --- |
-| 分支 | `feat/week2-data-pipeline`（沿用，未合入 `main`，未重命名，未推送） |
+| 分支 | `feat/week2-data-pipeline`（Week 3 当时未合入 `main`；**已于 2026-11-15 快进合入 `main`**，见开头“分支管理”节） |
 | 新增模型 | **B4 Feature-wise Gated Fusion**（单 `Linear`+Sigmoid，单融合向量）、**B5 对称双向 Cross-Graph Attention**（4 头 × 32 维） |
 | 新增文件 | `models/attention.py`、`configs/b4.yaml`、`configs/b5.yaml`、`tests/test_week3_models.py`、`docs/WEEK3_IMPLEMENTATION_REPORT.md` |
 | 修改文件 | `models/__init__.py`、`models/fusion.py`（+`GatedFusion`）、`train.py`（`--skip-test`）、`config.py`（`attention_heads`/`attention_dropout`/`attention_residual`）、`tests/test_{models,config,train}.py`、`.github/workflows/ci.yml` |
@@ -29,7 +40,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 分支 | `feat/week2-data-pipeline`（**未合入 main**；main 停留在 M0 的 `dfa496e`） |
+| 分支 | `feat/week2-data-pipeline`（Week 2 当时未合入 main；**已于 2026-11-15 合入，main 现为 `b875b7e`**） |
 | 功能提交 | `59f0dd9` feat(week2): 数据管线 + 防泄漏防线 + B0–B3 上游训练 |
 | 文档提交 | `21d389f` docs(status): 记录 CI run 41283635590 两个 job 均通过 |
 | CI | run 41283635590（`data-and-splits` ✅、`torch-cpu` ✅，后者含完整训练命令端到端检查） |
@@ -52,7 +63,8 @@
 
 - 研究设计在根目录 `AGENTS.md`，范围固定为 B0–B7；顶部含 Agent 工程维护入口。
 - 团队两人：coding/模型实现一人为主；另一人负责上平台训练并共同确认数据与生物学设置。
-- 远程仓库 https://github.com/huqian2024/CoFi-Gene 公开，默认分支 `main`；开发在 `feat/week2-data-pipeline` 分支进行。
+- 远程仓库 https://github.com/huqian2024/CoFi-Gene 公开，默认分支 `main`（2026-11-15 起包含 Week 2/Week 3 全部成果）；
+  `feat/week2-data-pipeline` 已合并冻结，后续 Week 4 / M4 从 `main` 切新分支开发。
 - 本机（开发机）：Python 3.12.2、numpy 2.5.4、pyarrow 26.0.0、**torch 2.15.0+cpu（仅 CPU）**；GPU 为 RTX 4060 Laptop，**不是 5090 训练机**。
 - 开发机访问 GitHub / PyPI 需经 `127.0.0.1:7890` 代理（仓库 `.git/config` 已设 http(s).proxy；pip 需 `export HTTPS_PROXY=...`）。
 - CI（`.github/workflows/ci.yml`）有两个 job：`data-and-splits`（快，numpy/pyarrow）与 `torch-cpu`（装 CPU 版 torch 并跑训练命令）。

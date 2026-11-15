@@ -1,7 +1,7 @@
 # 队友交接说明（Week 2 结束 → 下一阶段开始前）
 
 > 面向：负责数据与生物学解释、以及 5090 服务器训练的同学。
-> 仓库：https://github.com/huqian2024/CoFi-Gene ｜ 分支：`feat/week2-data-pipeline`（**未合入 main**）
+> 仓库：https://github.com/huqian2024/CoFi-Gene ｜ 分支：**`main`**（2026-11-15 起已包含 Week 2/Week 3 全部成果，`feat/week2-data-pipeline` 已合并冻结）
 > 本文件只讲"现在能用的东西 + 需要你确认/准备的事"。详细状态见 `docs/STATUS.md`。
 
 ---
@@ -91,9 +91,9 @@ data/raw/pie/de/{K562,RPE1,HepG2,Jurkat}.parquet
 
 ```bash
 git clone https://github.com/huqian2024/CoFi-Gene.git && cd CoFi-Gene
-git checkout feat/week2-data-pipeline
+git checkout main
 python -m pip install -e '.[dev,data]'
-python -m pytest -q                       # 期望 99 passed
+python -m pytest -q                       # 期望 147 passed（Week 2 时为 99）
 python scripts/check_environment.py --strict   # 必须退出码 0
 ```
 

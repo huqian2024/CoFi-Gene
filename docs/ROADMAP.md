@@ -45,7 +45,7 @@ B4–B7 目前会被注册表拒绝（`NotImplementedError`），以避免用占
 | M4 | ⛔ 未启动 | — |
 | M5–M8 | ⛔ 未启动 | — |
 
-交付证据：分支 `feat/week2-data-pipeline`（未合 main）；提交 `59f0dd9`（功能）、`21d389f`（CI 记录）；
+交付证据：分支 `feat/week2-data-pipeline`（2026-11-15 已合入 `main`，`main` = `b875b7e`）；提交 `59f0dd9`（功能）、`21d389f`（CI 记录）；
 CI run 41283635590（`data-and-splits` ✅ / `torch-cpu` ✅）；`pytest -q` → 99 passed；合成数据 B0–B3 可训练且可复现。
 
 ### M3 的启动前置条件（全部满足才开工）

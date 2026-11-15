@@ -4,10 +4,11 @@
 
 > 请接手 GitHub 仓库 https://github.com/huqian2024/CoFi-Gene 。按顺序读取根目录 `AGENTS.md`、`README.md`、`docs/STATUS.md`、`docs/DECISIONS.md`、`docs/DATA_CONTRACT.md`、`docs/ROADMAP.md`，再查看最新提交和代码。以仓库实际内容为准，不假定之前聊天进度。先总结已完成/待完成/风险，再只处理 `STATUS.md` 里的第一项，修改后跑对应测试并更新 `STATUS.md`。不要改动 B0–B7 研究边界，不得混入图隐藏边或测试扰动响应标签。
 
-## 当前仓库快照（2026-11-07，Week 3 / M3 代码完成）
+## 当前仓库快照（2026-11-15，`main` 已合并 Week 3）
 
-- 分支：`feat/week2-data-pipeline`（沿用，**未合入 `main`**）；`main` 停在 M0 的 `dfa496e`。
-- 提交：`59f0dd9`（Week 2 数据管线 + 防泄漏 + B0–B3）、`21d389f`（CI 记录）、Week 3 之后的改动**尚未提交**（未 commit）。
+- 分支：**`main` = `b875b7e`**（2026-11-15 以 `git merge --ff-only` 合并 Week 2 + Week 3 全部成果）；
+  `feat/week2-data-pipeline` 保留为同提交的历史分支，**不要再往它提交**，新工作从 `main` 切分支。
+- 提交：`59f0dd9`（Week 2 数据管线 + 防泄漏 + B0–B3）、`21d389f`（CI 记录）、`b875b7e`（Week 3 B4/B5）。
 - 已实现：STRING 双通道读取、ID 对齐、图构建、边/目标划分、负样本、泄漏防线、特征压缩、PIE 标签、
   数据集容器与 manifest、**B0–B5**（Week 3 新增 B4 单层门控融合、B5 4 头对称跨图注意力）、两个数据脚本、`configs/b0–b5.yaml`、
   **147 个测试**、两个 CI job（`torch-cpu` 现在也跑 B4/B5 训练命令）。
