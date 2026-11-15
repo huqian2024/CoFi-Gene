@@ -246,3 +246,131 @@ def test_trainer_runs_b6_for_two_epochs_and_records_the_feedback_settings(
         held_out = {tuple(sorted(pair)) for pair in
                     np.concatenate([part.val, part.test], axis=1).T.tolist()}
         assert encoded.isdisjoint(held_out)
+
+
+# ------------------------------------------------- B5/B4 equivalence at alpha=0
+def test_alpha_zero_reproduces_b5_and_b4_in_eval_mode():
+    """With alpha=0 the feedback weights are unchanged, so the second pass sees the
+    same adjacency as the first and B6/B7 must equal B5/B4 exactly."""
+    from cofi_gene.models import build_adjacencies
+
+    edges, weights, num_nodes = _graphs()
+    x = torch.randn(num_nodes, 8)
+    adjacencies = build_adjacencies(edges, weights, num_nodes)
+
+    for base, feedback_name in (("b5", "b6"), ("b4", "b7")):
+        torch.manual_seed(0)
+        reference = _model(base)
+        candidate = _model(feedback_name, feedback_alpha=0.0)
+        candidate.load_state_dict(reference.state_dict())   # same parameters
+        candidate.set_encoding_graphs(edges, weights, num_nodes)
+        reference.eval()
+        candidate.eval()
+        with torch.no_grad():
+            expected = reference(x, adjacencies)
+            actual = candidate(x, adjacencies)
+        for channel in ("A", "B"):
+            assert torch.equal(expected[channel], actual[channel]), (base, channel)
+
+
+def test_alpha_zero_matches_in_train_mode_when_dropout_is_zero():
+    from cofi_gene.models import build_adjacencies
+
+    edges, weights, num_nodes = _graphs()
+    x = torch.randn(num_nodes, 8)
+    adjacencies = build_adjacencies(edges, weights, num_nodes)
+    torch.manual_seed(3)
+    reference = _model("b5")
+    candidate = _model("b6", feedback_alpha=0.0)
+    candidate.load_state_dict(reference.state_dict())
+    candidate.set_encoding_graphs(edges, weights, num_nodes)
+    with torch.no_grad():
+        assert torch.equal(reference(x, adjacencies)["A"], candidate(x, {})["A"])
+
+
+def test_the_second_pass_reuses_the_same_encoder_module():
+    edges, weights, num_nodes = _graphs()
+    model = _model("b6")
+    model.set_encoding_graphs(edges, weights, num_nodes)
+    calls = {"count": 0}
+    handle = model.encoders["A"].register_forward_hook(
+        lambda *args: calls.__setitem__("count", calls["count"] + 1))
+    try:
+        model(torch.randn(num_nodes, 8), {})
+    finally:
+        handle.remove()
+    assert calls["count"] == 2   # first pass + feedback pass, shared weights
+    assert model.parameter_count() == _model("b5").parameter_count()
+
+
+def test_b6_b7_keep_the_week3_fusion_mathematics():
+    from cofi_gene.models.attention import CrossGraphAttention
+    from cofi_gene.models.fusion import GatedFusion
+
+    b6, b7 = _model("b6"), _model("b7")
+    assert isinstance(b6.fusion, CrossGraphAttention)
+    assert isinstance(b7.fusion, GatedFusion)
+    assert b6.fusion.num_heads == 4 and b6.fusion.residual is False
+    # The gate is still the single Linear(2d -> d) + Sigmoid of D-019.
+    assert isinstance(b7.fusion.gate, torch.nn.Linear)
+    assert b7.fusion.gate.in_features == 2 * b7.fusion.dim
+    assert b7.fusion.gate.out_features == b7.fusion.dim
+
+
+# ------------------------------------------------------- extreme conditions
+def test_weights_are_cast_to_the_score_dtype_and_device():
+    scores = torch.zeros(3, dtype=torch.float32)
+    weights = np.asarray([1, 400, 900], dtype=np.int64)   # different dtype/source
+    updated = feedback_weights(weights, scores)
+    assert updated.dtype == torch.float32 and updated.device == scores.device
+    assert torch.allclose(updated, torch.tensor([1.0, 400.0, 900.0]))
+
+
+def test_saturating_logits_and_large_weights_stay_finite():
+    weights = torch.tensor([1000.0, 0.5, 0.0])
+    updated = feedback_weights(weights, torch.tensor([1e4, -1e4, 1e4]))
+    assert torch.isfinite(updated).all()
+    assert torch.all(updated >= 0.0)
+    assert torch.all(updated <= 1500.0 + 1e-3)
+
+
+def test_isolated_nodes_remain_finite():
+    model = _model("b7")
+    single = {"A": torch.tensor([[0], [1]]), "B": torch.tensor([[0], [1]])}
+    weights = {"A": torch.tensor([10.0]), "B": torch.tensor([10.0])}
+    model.set_encoding_graphs(single, weights, 6)   # nodes 2..5 stay isolated
+    out = model(torch.randn(6, 8), {})
+    assert out["A"].shape == (6, 8)
+    assert torch.isfinite(out["A"]).all()
+
+
+def test_checkpoint_roundtrip_rebuilds_and_forwards(processed_dataset, tmp_path):
+    config = load_config(REPO / "configs" / "b7.yaml", {
+        "optim": {"epochs": 1, "eval_every": 1, "early_stop_patience": 1},
+        "runtime": {"device": "cpu", "out_dir": str(tmp_path), "seed": 2},
+    })
+    record = train_link_prediction(processed_dataset, config, evaluate_test=False)
+    checkpoint = torch.load(tmp_path / record["run_name"] / "model.pt",
+                            map_location="cpu", weights_only=False)
+    saved = checkpoint["config"]["model"]
+    restored = build_model(checkpoint["model_name"],
+                           feature_dim=processed_dataset.num_features,
+                           hidden_dim=int(saved["hidden_dim"]),
+                           fusion_dim=int(saved["fusion_dim"]),
+                           dropout=float(saved["dropout"]),
+                           feedback_alpha=float(saved["feedback_alpha"]),
+                           feedback_margin=float(saved["feedback_margin"]))
+    restored.load_state_dict(checkpoint["state_dict"])
+    edges = {channel: torch.as_tensor(processed_dataset.channel(channel).encode_edges)
+             for channel in ("A", "B")}
+    weights = {channel: torch.as_tensor(
+        processed_dataset.channel(channel).encode_weights, dtype=torch.float32)
+        for channel in ("A", "B")}
+    restored.set_encoding_graphs(edges, weights, processed_dataset.num_nodes)
+    restored.eval()
+    with torch.no_grad():
+        out = restored(torch.as_tensor(processed_dataset.X), {})
+    assert out["A"].shape == (processed_dataset.num_nodes, int(saved["fusion_dim"]))
+    assert torch.isfinite(out["A"]).all()
+    assert checkpoint["seed"] == 2
+

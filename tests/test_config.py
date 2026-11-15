@@ -67,6 +67,11 @@ def test_channel_mismatch_is_rejected_and_feedback_configs_load(tmp_path):
                                                       "feedback_margin": 2.0}})
     with pytest.raises(ValueError, match="feedback_margin"):
         load_config(bad)
+    bad_alpha = _write(tmp_path / "bad_alpha.yaml",
+                       {"model": {"name": "b6", "channels": ["A", "B"],
+                                  "feedback_alpha": -0.5}})
+    with pytest.raises(ValueError, match="feedback_alpha"):
+        load_config(bad_alpha)
     pytest.importorskip("torch")
     from cofi_gene.models import build_model
 
