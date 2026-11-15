@@ -2,6 +2,9 @@
 
 基于两张 STRING 证据图、独立 GCN、跨图融合和单轮 Graph Feedback 的 Gene Embedding 课程项目。
 
+> 🚀 **负责真实数据与 GPU 训练的同学请直接看 [`TRAINING_HANDOFF.md`](TRAINING_HANDOFF.md)**
+> —— 进度差说明、P0–P3 优先任务、可直接复制的环境/数据/训练命令、验收表与"第一波最低交付标准"。
+
 **先读**：`AGENTS.md`（研究范围与 B0–B7 设计）→ [`docs/STATUS.md`](docs/STATUS.md)（当前事实与下一步）→ [`docs/DECISIONS.md`](docs/DECISIONS.md)（已锁定及待确认决定）→ [`docs/DATA_CONTRACT.md`](docs/DATA_CONTRACT.md)（数据约定）→ [`docs/TEAM_HANDOFF.md`](docs/TEAM_HANDOFF.md)（队友视角交接：已完成/需确认/需准备/需验证）。
 
 > 当前状态：数据管线、B0–B3（Week 2）与 **B4/B5（Week 3：Gated Fusion / Cross-Graph Attention）** 已实现，

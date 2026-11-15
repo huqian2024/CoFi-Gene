@@ -15,6 +15,16 @@
 | 开发分支 | `feat/week2-data-pipeline` 保留（与 `main` 同提交，名已过期，勿再往上提交）；**Week 4 / M4 从 `main` 切新分支** |
 | 未做 | 未 force push、未删除任何分支、未改动历史提交、未提交真实数据/权重（`data/`、`runs/` 仍在 `.gitignore`） |
 
+## 文档交付（2026-11-15）
+
+- 新增根目录 **[`TRAINING_HANDOFF.md`](../TRAINING_HANDOFF.md)**：面向"真实数据 + RTX 5090 训练"同学的交接文档
+  （进度差说明、P0–P3 优先任务、可复制命令、实验红线、P0–P3 验收表、第一波最低交付标准、BLOCKED/TODO 清单）。
+  `README.md` 顶部已加醒目相对链接。
+- 口径：文中所有命令的参数均取自当前提交的真实接口（`scripts/*.py` 的 argparse、`python -m cofi_gene.train --help`、
+  `configs/*.yaml`），并在本机用**合成数据**做了等价验证（`147 passed`、`build_dataset --dry-run`、
+  `train --dry-run`、`CoFiDataset.validate()`、`metrics.json` 读取）。
+  **真实 STRING/PIE 路径与 GPU 命令未在真实数据/GPU 上执行**，仍是待验证项。
+
 ## Week 3 交付（2026-11-07）
 
 | 项 | 值 |
