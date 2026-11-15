@@ -51,3 +51,25 @@ jobs:
             --run-name ci_b5
           test -f runs/ci/ci_b4/metrics.json
           test -f runs/ci/ci_b5/metrics.json
+          # Week 4 models: B6/B7 one-step edge-weight feedback.
+          # --skip-test keeps the smoke honest (no test-split scoring) and cheap;
+          # 2 epochs is enough to prove the second encoding pass trains.
+          python -m cofi_gene.train --config configs/b6.yaml \
+            --dataset data/processed/ci_synthetic --out-dir runs/ci --epochs 2 \
+            --run-name ci_b6 --seed 42 --skip-test
+          python -m cofi_gene.train --config configs/b7.yaml \
+            --dataset data/processed/ci_synthetic --out-dir runs/ci --epochs 2 \
+            --run-name ci_b7 --seed 42 --skip-test
+          test -f runs/ci/ci_b6/metrics.json
+          test -f runs/ci/ci_b7/metrics.json
+          python - <<'PY'
+          import json
+          for name in ("ci_b6", "ci_b7"):
+              record = json.load(open(f"runs/ci/{name}/metrics.json", encoding="utf-8"))
+              model = record["model"]
+              assert model["uses_feedback"] is True, name
+              assert model["feedback"]["alpha"] == 0.1 and model["feedback"]["margin"] == 0.5
+              assert record["test"] is None, f"{name} must not score the test split"
+          print("B6/B7 feedback smoke OK")
+          PY
+

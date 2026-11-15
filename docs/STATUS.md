@@ -1,8 +1,34 @@
 # 项目状态（每次合并 PR 后更新）
 
-最后更新：2026-11-15（**分支管理**：`main` 已快进合并 Week 2 + Week 3，147 测试通过；代码内容仍为 2026-11-07 的 Week 3 / M3 状态，未接触真实数据与 GPU）
-阶段：**M3 代码完成（合成数据验证）→ B6/B7（Feedback）尚未开始**
-详细报告：`docs/WEEK3_IMPLEMENTATION_REPORT.md`
+最后更新：2026-11-15（**Week 4 / M4 代码 + CPU 合成数据验证完成**：B6/B7 单轮边权反馈实现、186 测试通过、防泄漏审计与 α=0 等价性验证完成；真实 STRING/PIE 与 RTX 5090 **仍未验证**）
+阶段：**M4 代码完成（合成数据 + CPU）→ 真实数据首轮训练（P2）尚未开始**
+详细报告：[`docs/WEEK4_IMPLEMENTATION_REPORT.md`](WEEK4_IMPLEMENTATION_REPORT.md)（Week 3 见 `WEEK3_IMPLEMENTATION_REPORT.md`）
+
+## Week 4 交付（2026-11-15，M4）
+
+| 项 | 值 |
+| --- | --- |
+| 分支 | `feat/week4-graph-feedback`（基于 `main` = `eddf1d7`）→ 本地 `--ff-only` 合并到 `main`，**未 push** |
+| 提交 | `6d2c584`（实现）、`b66c392`（审计/等价性测试）、随后一条 docs/CI 提交 |
+| 新增模型 | **B6 = B5 Attention + 单轮边权反馈**、**B7 = B4 Gate + 单轮边权反馈**（反馈模块无参数，参数量分别等于 B5/B4） |
+| 新增文件 | `models/feedback.py`、`configs/b6.yaml`、`configs/b7.yaml`、`tests/test_week4_feedback.py`、`tests/test_week4_leakage.py`、`docs/WEEK4_IMPLEMENTATION_REPORT.md` |
+| 修改文件 | `models/__init__.py`（注册表 b0–b7、`set_encoding_graphs()`、两段式 forward）、`train.py`（传编码图 + 反馈元数据）、`config.py`（可选键 `feedback_alpha/margin`，不进 DEFAULTS）、`models/fusion.py`（仅 docstring）、`tests/test_{models,config,train,week3_models}.py`、`.github/workflows/ci.yml`、`README.md`、`docs/DECISIONS.md`、`docs/STATUS.md` |
+| 反馈公式 | `p = σ(detach(head_c(H¹)))`；`w' = clamp(w·(1+α(2p−1)), (1−m)w, (1+m)w)`，`α=0.1`、`m=0.5`；只重加权既有训练边，不补边 |
+| 测试 | `python -m pytest -q` → **186 passed**（4.25 s，CPU；Week 3 为 147，+39） |
+| 等价性 | `α=0` 时 B6≡B5、B7≡B4（`eval()` + 同 seed + 同参数，`torch.equal` 逐位相等） |
+| 防泄漏 | 反馈邻接 == 该通道 `encode_edges`；交换 val/test 正边后训练 loss 与 state_dict 逐位不变；`mask_other_view=True` 场景亦通过 |
+| 冒烟 | 合成数据 60 基因/16 维、seed 42、3 epoch、`--skip-test`：B6 `val_mean_ap=0.635594`、B7 `0.886939`，两次运行逐位一致 |
+| 配置 hash | B0–B5 不变（`bd7bb75ec0f2`/`f3160ec62e2d`/`0ea7242eb7f9`/`f2ebde49513f`/`eb0a3fe0c5a8`/`29ee907107e4`）；B6 `a4456156d5fd`、B7 `5df6a41740ac` |
+| 尚未做 | 真实 STRING/PIE 数据、RTX 5090、缺边鲁棒性（M5）、下游 DE MLP（M6）、3 seed 汇总（M7）、候选补边（D-022 排除） |
+
+### Week 4 未解决事项（继续保留）
+
+1. **D-016 跨视图遮蔽协议待确认**：默认 `mask_other_view=false`（"另一视图可见"），B6 可间接利用对方视图可见的边。
+2. **`optim.negatives_ratio` 既有配置问题**：只被校验、不生效（负样本在构建期固定，W2-1），改键无效果。
+3. **真实数据与 GPU 验证未完成**：所有"跑通"均为合成数据 + CPU。
+4. **反馈成本与偏乐观打分**：每 step 多一次编码（≈2× 前向）；反馈用共享 head 对训练正边打分，`p` 偏高（受 `m=0.5` 限制）。
+5. **D-023 待确认**：当前"每 forward 重算一次反馈"，尚未实现 warmup 后冻结式。
+
 
 ## 分支管理（2026-11-15）
 
@@ -63,10 +89,10 @@
 
 | 层次 | 内容 |
 | --- | --- |
-| ① **代码已实现** | STRING 双通道读取、ID 对齐、图构建、边/目标划分、负采样、泄漏防线、特征压缩、PIE 标签、数据集容器与 manifest、B0–B3 训练/评估、两个数据 CLI、配置体系、99 个测试、两个 CI job |
-| ② **合成数据已验证** | 上述全部在 `cofi_gene.synthetic` 生成的假 STRING/PIE 上跑通；B0–B3 各有 val/test 指标，B1 val AUPRC 明显高于 1:1 负样本的 0.5 基线；训练可复现 |
+| ① **代码已实现** | STRING 双通道读取、ID 对齐、图构建、边/目标划分、负采样、泄漏防线、特征压缩、PIE 标签、数据集容器与 manifest、**B0–B7** 训练/评估（B6/B7 为 Week 4 单轮反馈）、两个数据 CLI、配置体系、**186 个测试**、两个 CI job |
+| ② **合成数据 + CPU 已验证** | 上述全部在 `cofi_gene.synthetic` 生成的假 STRING/PIE 上跑通；B0–B7 各有 val/test 指标，训练可复现；B6/B7 另有防泄漏审计与 `α=0` 等价性验证 |
 | ③ **真实数据未验证** | 未下载、未核验任何 STRING / PIE 真实文件；`docs/DATA_CONTRACT.md` 第 3 节表格仍为空；基因交集、边数、覆盖率全部未知 |
-| ④ **GPU 未验证** | 本机只有 RTX 4060 Laptop 且 torch 为 CPU 版；RTX 5090 上的 torch/CUDA（sm_120）、显存与真实规模训练**均未验证** |
+| ④ **GPU 未验证** | 本机只有 RTX 4060 Laptop 且 torch 为 CPU 版；RTX 5090 上的 torch/CUDA（sm_120）、显存与真实规模训练（含 B6/B7 的 2× 前向成本）**均未验证** |
 
 ## 已确认的事实
 
@@ -85,7 +111,7 @@
 | --- | --- | --- |
 | 原始研究范围 B0–B7 | 已定义 | `AGENTS.md` |
 | 包结构 / 依赖分组 / CI | 已完成 | `pyproject.toml`（core=numpy+pyyaml；extras: data/train/dev）、两个 CI job |
-| 单测总体 | **147 passed**（3.3 s，CPU） | `.venv/bin/python -m pytest -q` |
+| 单测总体 | **186 passed**（4.25 s，CPU） | `.venv/bin/python -m pytest -q` |
 | STRING 双通道解析（分列、阈值、去重、自环、未知蛋白、combined-score 不当证据） | 已实现，合成数据验证 | `cofi_gene/string_io.py`、`graph_build.py`、`tests/test_string_io.py` |
 | 基因 ID 对齐（符号归一化、多蛋白冲突计数） | 已实现，单测覆盖 | `cofi_gene/gene_ids.py`、`tests/test_gene_ids.py` |
 | 边划分 / 分组划分 / 负样本 | 已实现，含确定性 | `cofi_gene/splits.py`、`negative_sampling.py`、`tests/test_splits.py` |
@@ -97,21 +123,24 @@
 | 训练确定性 | 已确认（同 seed 两次 loss 与指标完全一致） | `tests/test_train.py::test_training_is_deterministic_for_a_fixed_seed` |
 | B4 Gated Fusion | ✅ 已实现，合成数据跑通 | `models/fusion.py::GatedFusion`、`configs/b4.yaml`、`tests/test_week3_models.py` |
 | B5 Cross-Graph Attention | ✅ 已实现，合成数据跑通 | `models/attention.py`、`configs/b5.yaml`、`tests/test_week3_models.py` |
-| B6–B7（Feedback） | **未实现**（registry 主动抛 `NotImplementedError`） | `cofi_gene/models/__init__.py` |
+| B6 One-Step Feedback（B5 + 反馈） | ✅ 已实现，CPU synthetic 已验证 | `models/feedback.py`、`configs/b6.yaml`、`tests/test_week4_{feedback,leakage}.py` |
+| B7 One-Step Feedback（B4 + 反馈） | ✅ 已实现，CPU synthetic 已验证 | 同上（`configs/b7.yaml`） |
 | 下游 DE MLP | **未实现**（M6） | — |
 | 真实 STRING / PIE 数据 | **未下载、未核验** | `docs/DATA_CONTRACT.md` 第 3 节仍为空 |
 | 服务器 torch/CUDA（5090） | **未验证** | 需队友跑 `python scripts/check_environment.py --strict` |
 
-## 正在执行（Week 3 已交付，下一步起点）
+## 正在执行（Week 4 已交付，下一步起点）
 
-1. **B4/B5 已实现**：`configs/b4.yaml`、`configs/b5.yaml` 可用；B6/B7 仍拒绝。
+1. **B0–B7 全部已实现**：`configs/b0–b7.yaml` 可用（B4/B5 = Week 3，B6/B7 = Week 4）；下游 MLP 仍未实现。
 2. **M1 收尾（数据，需队友）**：确认 STRING 版本/物种/阈值（D-005）、gene_text 来源与压缩方式（D-012/D-017）、DE 标签规则（D-014），然后跑真实数据构建。
 3. **M0 收尾（服务器，需队友）**：5090 上 `python scripts/check_environment.py --strict` 通过并留档。
 4. **M3 收尾（需两人）**：锁定 D-018（训练预算）以及新增的 D-019/D-020/D-021（门控/注意力/监督形式的工程默认），
    然后在真实数据上跑 B0–B5 单 seed 冒烟 → 才允许跑多 seed 消融。
-5. **M4（进行中，2026-11-15 起）**：B6/B7 单轮 Graph Feedback（`AGENTS.md` 4.3、**D-022**：只调既有边权重，不补边）。
-   （此前此处误引 D-009；D-009 实为"基因符号归一化与冲突策略"。B6/B7 已在分支 `feat/week4-graph-feedback` 实现，
-   状态表与细节留待 Step 4 统一更新。）
+5. **M4 完成（代码 + CPU，2026-11-15）**：B6/B7 单轮边权反馈已实现并验证（`AGENTS.md` 4.3、**D-022**：只调既有边权重，不补边）。
+   （此前此处误引 D-009；D-009 实为"基因符号归一化与冲突策略"。细节见 `docs/WEEK4_IMPLEMENTATION_REPORT.md`。）
+6. **真实数据首轮训练（P2，需队友）**：按 [`TRAINING_HANDOFF.md`](../TRAINING_HANDOFF.md) 跑
+   `B3 → B4/B5 → B6/B7`，同一数据集 / seed / 预算；未完成前不得把任何真实数据结论写进报告。
+7. **D-016 / D-018 / D-023 待锁定**：跨视图遮蔽口径、训练预算、反馈重算方式，均会影响实验可比性。
 
 ## Week 2 明确未做 / 不做的部分
 
