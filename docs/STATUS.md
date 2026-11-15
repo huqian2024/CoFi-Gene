@@ -11,7 +11,7 @@
 | 结论 | `main` 已**快进合并** Week 2 + Week 3 全部成果，不再是停在 M0 的 `dfa496e` |
 | 合并方式 | `git merge --ff-only feat/week2-data-pipeline` → `dfa496e..b875b7e`，4 个提交、57 文件、+6028/−50 |
 | 合并后验证 | `.venv/bin/python -m pytest -q` → **147 passed**（4.60 s，CPU，torch 2.15.0+cpu） |
-| 远程状态 | `origin/main` 已推送到同一提交；`push` 会触发 CI 两个 job（`push` 无分支过滤） |
+| 远程状态 | `origin/main` = 本合并结果（`06d8f14` 及以后）；CI run **43677502606**：`data-and-splits` ✅、`torch-cpu` ✅ |
 | 开发分支 | `feat/week2-data-pipeline` 保留（与 `main` 同提交，名已过期，勿再往上提交）；**Week 4 / M4 从 `main` 切新分支** |
 | 未做 | 未 force push、未删除任何分支、未改动历史提交、未提交真实数据/权重（`data/`、`runs/` 仍在 `.gitignore`） |
 
