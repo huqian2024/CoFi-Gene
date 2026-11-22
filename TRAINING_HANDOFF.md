@@ -1,14 +1,52 @@
 # 真实数据与 GPU 训练交接（Training Handoff）
 
 > **面向**：负责真实 STRING / PIE 数据接入与 RTX 5090 训练的同学。
-> **仓库**：<https://github.com/huqian2024/CoFi-Gene> ｜ **分支**：`main`（Week 2 + Week 3 已合并，代码基线提交 `b875b7e`）
+> **仓库**：<https://github.com/huqian2024/CoFi-Gene> ｜ **分支**：`main`（Week 2 – Week 5 已合并，代码基线 `f1c95c1`）
 > **本文定位**：只讲"现在做什么、怎么跑、怎么验收"。状态事实以 [docs/STATUS.md](docs/STATUS.md) 为准，
 > 待确认决策见 [docs/DECISIONS.md](docs/DECISIONS.md)，数据字段约定见 [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md)。
 > 本文所有命令、参数、路径、产物字段均已在仓库当前提交上逐条核对过；**没有**假设 PyG、CUDA、真实数据已就绪。
 
+## 0. 当前状态与你的任务（2026-11-22 更新，优先于下文全部旧描述）
+
+> ⚠️ 下文 §0-old 是 2026-11-15 的记录，当时"B6/B7 未实现、真实数据未验证、M5 BLOCKED"。**这些都过期了**，以本节为准。
+
+| 维度 | 代码（本仓库 `main`） | 真实数据 / GPU |
+| --- | --- | --- |
+| 数据管线（STRING 双通道、ID 对齐、划分、负样本、manifest） | ✅ 已实现，`218 passed` | ✅ 训练机已构建 `data/processed/real_v1`：18,002 基因；A 144,071 边 / B 871,260 边，重合 42,035 |
+| B0–B7 | ✅ 全部实现（B6/B7 = 单轮边权反馈） | ✅ seed 42 首轮跑完（RTX 4090），见 `docs/ALL_MODELS_RESULTS_2026-11-19.md` |
+| **Week 5 / M5**：缺边鲁棒性 10/30/50%、双视图遮蔽、Gene ID 错位对照 | ✅ 代码 + 协议（`scripts/run_robustness.py`，见 §4.5） | ❌ **待你执行 —— 这是你本轮的主任务** |
+| 下游 DE MLP | ⛔ 未实现（M6） | — |
+| RTX 5090 | — | ❌ 仍未验证（首轮跑在 4090） |
+
+### 0.1 本轮只有三件事，按顺序做
+
+| 顺序 | 任务 | 完成标志 |
+| --- | --- | --- |
+| S1 | **把服务器代码同步到 `main`**：`main` 现已包含 M5 代码（基线 `f1c95c1`），而你首轮用的 3 个修复提交 `d3c5433a435b`（基因符号数字后缀）、`7386d5ab7e4f`（GCN 邻接 CUDA 设备）、`0df87b474f02`（无参数 B0 评估）**只存在于服务器分支 `codex/real-data-first-round`，`origin` 上没有** | 这三个提交 push 上来（或让 coding 侧挑拣进 `main`），否则真实数据结果无法从仓库复现 |
+| S2 | **在真实数据上跑 M5**：主曲线 + Gene ID 错位对照（命令见 §4.5） | `runs/m5_robustness/summary.json` + `.md`，以及按 `docs/M5_ROBUSTNESS_RESULTS_TEMPLATE.md` 填好的结果文档 |
+| S3 | **确认两个待定口径**：D-016（是否启用双视图遮蔽）、D-018（预算是否固定为当前占位值） | 在 `docs/DECISIONS.md` 对应条目写明结论 |
+
+### 0.2 同步约定（边界，重要）
+
+- **分支同步**：先把 `main` 合到你的训练分支，再开始跑 M5，避免用旧代码产出曲线：
+
+  ```bash
+  git fetch origin
+  git checkout codex/real-data-first-round   # 你现有的训练分支
+  git merge origin/main                      # 有冲突按你的分支优先，但要保留 main 的 M5 代码
+  python -m pytest -q                        # 期望 218 passed
+  git push origin codex/real-data-first-round
+  ```
+
+- **只提交代码与文档**：`data/`、`runs/`、`model.pt`、`manifest.json` 都不入库（`.gitignore` 已排除）。结果表只贴指标与命令。
+- **谁改什么**：`src/cofi_gene/perturbation.py` 与协议默认值由 coding 侧维护；你只通过 **config / CLI** 使用（`--edge-drop-fraction` / `--mask-other-view` / `--misalign-cross-view`）。要改协议口径，先在 `docs/DECISIONS.md` 新增条目（或改 D-024/025/026 的状态），不要直接改代码。
+- **文档不撞车**：你的结果写到新文件 `docs/M5_ROBUSTNESS_RESULTS_<YYYY-MM-DD>.md`，并只在 `docs/STATUS.md` 的"下一步"处加一行链接；`STATUS.md` 其余段落由 coding 侧维护。
+
+
+
 ---
 
-## 0. 先读这一节：当前存在明确的"进度差"
+## 0-old. 历史记录（2026-11-15 视角，已被上方 §0 取代）：当前存在明确的"进度差"
 
 > ⚠️ **模型工程已经推进到 Week 3 / M3，但仓库内没有任何一份可核验的真实数据 + GPU 训练结果。**
 
@@ -100,7 +138,7 @@ pip install --index-url https://download.pytorch.org/whl/cpu torch
 python scripts/check_environment.py            # 无论成败都先跑这个，输出是 JSON
 python scripts/check_environment.py --strict   # 期望退出码 0
 echo "exit=$?"
-python -m pytest -q                            # 期望 147 passed（缺 torch 时训练用例自动 skip）
+python -m pytest -q                            # 期望 218 passed（缺 torch 时训练用例自动 skip）
 ```
 
 判读规则（来自 `scripts/check_environment.py` 的实现）：
@@ -227,7 +265,7 @@ print(json.dumps(m['report']['downstream'], indent=2)[:800])"
 
 ---
 
-## 4. 训练（B0–B5，当前可用）
+## 4. 训练（B0–B7，当前可用；Week 5 / M5 见 §4.5）
 
 ### 4.1 首轮三条命令（真实数据 + GPU）
 
@@ -246,6 +284,16 @@ python -m cofi_gene.train --config configs/b4.yaml \
 python -m cofi_gene.train --config configs/b5.yaml \
     --dataset data/processed/real_v1 --device cuda --seed 42 \
     --out-dir runs/real_v1 --run-name b5_real_v1_seed42
+
+# B6：B5 + 单轮边权反馈（Attention 路线；参数与 B5 相同，但每步两次编码）
+python -m cofi_gene.train --config configs/b6.yaml \
+    --dataset data/processed/real_v1 --device cuda --seed 42 \
+    --out-dir runs/real_v1 --run-name b6_real_v1_seed42
+
+# B7：B4 + 单轮边权反馈（Gate 路线；参数与 B4 相同）
+python -m cofi_gene.train --config configs/b7.yaml \
+    --dataset data/processed/real_v1 --device cuda --seed 42 \
+    --out-dir runs/real_v1 --run-name b7_real_v1_seed42
 ```
 
 补齐基线时同理替换 `configs/b0.yaml` / `b1.yaml` / `b2.yaml`（`b1` 只用图 A，`b2` 只用图 B，`b0` 无消息传递）。
@@ -290,6 +338,62 @@ mkdir -p runs/logs
 # 另开一个终端记录显存峰值（训练期间）
 nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu --format=csv -l 5
 ```
+
+### 4.5 Week 5 / M5：缺边鲁棒性 + Gene ID 错位对照（本轮主任务）
+
+代码已在 `main` 提供，**默认关闭**，必须显式开启。协议说明见 `docs/WEEK5_IMPLEMENTATION_REPORT.md`。
+
+```bash
+# 0) 先确认代码/数据/预算没跑偏
+git rev-parse HEAD                      # 应为 f1c95c1 或其后
+python -m pytest -q                     # 期望 218 passed
+python -m cofi_gene.train --config configs/b3.yaml \
+    --dataset data/processed/real_v1 --dry-run | tail -20
+
+# 1) 主曲线：B0–B7 × {0, 0.1, 0.3, 0.5}（每格 = 一次完整训练）
+python scripts/run_robustness.py --dataset data/processed/real_v1 \
+    --device cuda --seed 42 --out-dir runs/m5_robustness --summary-name seed42
+
+# 1b) 只想先看关键对照（成本低，先出图）——注意 run_name 与上面相同，
+#     同一 (model, ratio, seed) 只会保留最后一次；两个 sweep 不必都跑
+python scripts/run_robustness.py --dataset data/processed/real_v1 \
+    --device cuda --seed 42 --models b1 b2 b4 b5 b6 b7 \
+    --ratios 0 0.1 0.3 0.5 --out-dir runs/m5_robustness --summary-name key42
+
+# 2) 实验三：Gene ID 错位对照（只允许 b3–b7；ratio 用 0 即可）
+python scripts/run_robustness.py --dataset data/processed/real_v1 \
+    --device cuda --seed 42 --models b3 b4 b5 b6 b7 --ratios 0 \
+    --misalign-cross-view --out-dir runs/m5_robustness --summary-name misalign42
+
+# 3) 可选：双视图遮蔽口径（D-016 未锁定前只作补充实验，不进主表）
+python scripts/run_robustness.py --dataset data/processed/real_v1 \
+    --device cuda --seed 42 --models b1 b4 b5 --ratios 0.3 \
+    --mask-other-view --out-dir runs/m5_robustness --summary-name maskother42
+
+# 4) 单格排查也可以直接用训练 CLI
+python -m cofi_gene.train --config configs/b5.yaml \
+    --dataset data/processed/real_v1 --device cuda --seed 42 \
+    --out-dir runs/m5_robustness --run-name b5_drop30_seed42 \
+    --edge-drop-fraction 0.3
+```
+
+协议要点（细节见 `docs/WEEK5_IMPLEMENTATION_REPORT.md`、`docs/DECISIONS.md` D-024/D-025/D-026）：
+
+- 只删每个通道的 **`encode_edges`（训练/编码图）**；`val`/`test` 正边与构建期固定负样本不参与抽样，
+  因此 0/10/30/50% 四档共用**同一评估集**（`n_positives`/`n_negatives` 应完全相同）。
+- 删边种子只依赖 `(run seed, 通道序号)`、**与比例无关** → 10% ⊂ 30% ⊂ 50%，
+  曲线反映信息损失而不是重新抽样；每个比例都是**重训**，不是评测期删边。
+- 错位对照是"融合前对单个视图做固定 derangement（无不动点）"，编码器/监督/评估边不变。
+- 开启任一扰动时 `metrics.json` 会多一个 `perturbation` 块（每通道 kept/removed 计数、
+  错位的 `permutation_sha256`）；`dataset.dataset_sha256` 仍指向未扰动数据集，属预期。
+
+M5 验收（缺一不算完成）：
+
+- [ ] `runs/m5_robustness/seed42.json` 存在，`dataset.sha256` 与首轮一致（`fee691ce…`）
+- [ ] 每个 ratio 的 `test.*.n_positives` / `n_negatives` 与 ratio=0 完全相同
+- [ ] `perturbation.channels.*.num_encode_edges_removed > 0`；ratio=0 的 run 不应出现 `perturbation` 块
+- [ ] 结果文档按 `docs/M5_ROBUSTNESS_RESULTS_TEMPLATE.md` 填好，push 到 `docs/M5_ROBUSTNESS_RESULTS_<日期>.md`
+- [ ] 若某格 OOM 或 `best_epoch == 200`，在结果文档"异常与限制"里写原文，不要静默丢弃
 
 
 ---
@@ -363,10 +467,10 @@ CLI 结束时也会打印一行摘要：
 | 运行耗时 / 显存记录 | **TODO**：`metrics.json` 只有 `created_at`，无 wall-clock、无显存峰值 | P3 要求的耗时/显存需外部记录 | `/usr/bin/time -v` + `nvidia-smi -l 5`（§4.4） |
 | AMP / 混合精度 / batch 或分块 | **TODO**：无 `--amp`、无 `batch_size`，每次前向都是全图 | 显存随节点/边数线性增长，5090 上未验证 | 记录规模与 OOM 现象，上报后再定方案 |
 | 断点续训 | **TODO**：`model.pt` 只存最终 best state，无 optimizer/epoch 状态 | 中断需从头跑 | 单次跑完并保留日志 |
-| 缺边鲁棒性（10/30/50%） | **BLOCKED**（M5）：只有库函数 `cofi_gene.splits.simulate_missing_edges`，**没有** CLI | 无法产出鲁棒性曲线 | 等 M5 提供入口，不要临时手写脚本产出"表" |
-| Gene ID 错位对照 | **BLOCKED**（M5）：未实现 | 无法做跨图互补性验证 | 同上 |
+| 缺边鲁棒性（10/30/50%） | ✅ 已实现（Week 5 / M5，D-024）：`python scripts/run_robustness.py` 与 `--edge-drop-fraction` | 可按协议出曲线 | 见 §4.5；每个比例 = 一次完整训练，评估集固定 |
+| Gene ID 错位对照 | ✅ 已实现（Week 5 / M5，D-026）：`--misalign-cross-view`，仅 b3–b7 | 可做跨图互补性验证 | 见 §4.5；记录 `permutation_sha256` |
 | 下游 DE MLP（冻结 embedding） | **BLOCKED**（M6）：未实现；只有库接口 `model.encode()` / `fusion_representations()` | 暂无 AUPRC 下游指标 | 上游可先跑；下游等 M6 |
-| B6 / B7（Graph Feedback） | **BLOCKED**（M4）：注册表主动 `NotImplementedError` | 无反馈实验 | **不要**用占位实现凑表 |
+| B6 / B7（Graph Feedback） | ✅ 已实现（Week 4，D-022） | 每步两次编码，约 2× 前向成本 | 直接用 `configs/b6.yaml` / `configs/b7.yaml` |
 | `optim.negatives_ratio` 生效 | **已知缺陷**（W2-1）：只被校验，训练负样本来自数据集构建期 | 改该键**没有任何效果** | 要改负样本比例必须重建数据集（`--negatives-ratio`） |
 | 真实规模下的内存 | **未验证**：合成数据仅 60 节点；真实 3–5k 节点的邻接/边张量未实测 | 可能出现内存或显存瓶颈 | 先用冒烟构建估规模，再正式跑 |
 | 真实数据 / GPU 结果 | **未验证**：仓库内无任何真实数据 manifest 或 GPU run | 无法引用任何真实指标 | 这就是本文档要解决的问题 |
@@ -384,7 +488,7 @@ CLI 结束时也会打印一行摘要：
    未确认前沿用"当前默认"，且**不得把默认值写成结论**。
 4. **不得提交真实数据、模型权重或敏感路径。** `data/`、`runs/` 已在 `.gitignore`。
    归档 `manifest.json` 前确认里面没有绝对路径/账号信息（`versions.executable` 会记录解释器路径）。
-5. **不得把 CPU 单元测试通过等同于 GPU 训练成功。** `pytest -q → 147 passed` 只说明代码逻辑与合成数据链路正确。
+5. **不得把 CPU 单元测试通过等同于 GPU 训练成功。** `pytest -q → 218 passed` 只说明代码逻辑与合成数据链路正确。
 6. **不得把合成数据结果描述为真实数据结果。** 现有 `runs/week3_smoke/`、`runs/branch_merge_smoke/` 全是合成数据冒烟。
 7. **单图模型只评自己的图**：B1 只评通道 A，B2 只评通道 B；不要把单图模型拿去评未使用的另一张图。
 8. **报 AUPRC 必须同时给阳性率与负采样口径**（`positive_rate`、`n_positives` / `n_negatives`，以及负样本来自构建期固定抽样的说明），否则数字无法比较。
@@ -409,7 +513,7 @@ CLI 结束时也会打印一行摘要：
 
 - [ ] 【必须】`python scripts/check_environment.py --strict` 退出码 0，输出留档（PyG 无法安装时：保留非 strict 输出 + 书面说明，见下一条）
 - [ ] 【必须】若 PyG 装不上：保留非 strict 输出并注明，不得为此阻塞训练
-- [ ] 【必须】`python -m pytest -q` → 147 passed（记录实际数字与机器）
+- [ ] 【必须】`python -m pytest -q` → 218 passed（记录实际数字与机器）
 - [ ] 【必须】真实 STRING 两文件 + `gene_text` 矩阵与 id 顺序文件 + 至少一个细胞系 DE parquet 到位
 - [ ] 【必须】`build_dataset.py --dry-run` 输出中 `genes` / 两通道 `num_edges` / `overlap.jaccard` / `splits` 合理
 - [ ] 【必须】正式构建产出 `data/processed/<name>/{dataset.npz, dataset.json, manifest.json}`
@@ -427,6 +531,17 @@ CLI 结束时也会打印一行摘要：
 - [ ] 【可选】同配置下重复一次 B3，确认可复现（loss/指标一致）
 - [ ] 【阻塞】B6 / B7：未实现（M4），不阻塞首轮
 - [ ] 【阻塞】多种子（3 seeds）：等 D-018 预算锁定后再做，否则重跑
+
+### P2b M5 鲁棒性与错位对照（【必须】，2026-11-22 起）
+
+- [ ] 【必须】训练分支已同步 `origin/main`（含 M5 代码），`python -m pytest -q` → 218 passed
+- [ ] 【必须】`python scripts/run_robustness.py ... --summary-name seed42` 主曲线跑完（B0–B7 × 0/0.1/0.3/0.5）
+- [ ] 【必须】Gene ID 错位对照（`--misalign-cross-view`，b3–b7，ratio 0）
+- [ ] 【必须】`summary.json` 的 `dataset.sha256` 与首轮一致（`fee691ce…`）
+- [ ] 【必须】每个 ratio 的 `n_positives` / `n_negatives` 与 ratio=0 完全一致（同一评估集）
+- [ ] 【必须】按 `docs/M5_ROBUSTNESS_RESULTS_TEMPLATE.md` 写 `docs/M5_ROBUSTNESS_RESULTS_<日期>.md` 并 push
+- [ ] 【可选】D-016 双视图遮蔽补充实验（`--mask-other-view`，不进主表）
+- [ ] 【必须】写明每格耗时 / 显存、是否命中 200 epoch 上限、任何 OOM 原文
 
 ### P3 结果交付（【必须】）
 
@@ -466,6 +581,9 @@ CLI 结束时也会打印一行摘要：
 | [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md) | 数据字段、划分协议、manifest 格式、数据清单表格 |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | M0–M8 里程碑与训练交付合同 |
 | [docs/WEEK3_IMPLEMENTATION_REPORT.md](docs/WEEK3_IMPLEMENTATION_REPORT.md) | B4/B5 实现细节、张量形状、参数统计、已知限制 |
+| [docs/WEEK5_IMPLEMENTATION_REPORT.md](docs/WEEK5_IMPLEMENTATION_REPORT.md) | **Week 5 / M5**：删边 / 遮蔽 / 错位协议、CLI、验收与风险 |
+| [docs/M5_ROBUSTNESS_RESULTS_TEMPLATE.md](docs/M5_ROBUSTNESS_RESULTS_TEMPLATE.md) | **你要填的结果模板**（复制成 `M5_ROBUSTNESS_RESULTS_<日期>.md`） |
+| [docs/ALL_MODELS_RESULTS_2026-11-19.md](docs/ALL_MODELS_RESULTS_2026-11-19.md) | 首轮真实数据 B0–B7 上游结果（seed 42，RTX 4090） |
 | [docs/TEAM_HANDOFF.md](docs/TEAM_HANDOFF.md) | Week 2 视角的队友交接（数据含义/待确认项） |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | 新对话/本地 Agent 的接手协议 |
 

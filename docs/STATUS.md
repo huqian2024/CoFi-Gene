@@ -194,6 +194,10 @@
 
 0. **M5 完成（代码 + CPU，2026-11-22）**：删边鲁棒性 / 双视图遮蔽 / 基因错位对照已实现，
    `python scripts/run_robustness.py` 可批量产出曲线；**真实数据的曲线与 3 seed 需训练方执行**。
+1. **训练方本轮任务（S1–S3）**：①把 3 个服务器修复提交 push 上来（否则首轮真实结果无法从仓库复现）；
+   ②在真实数据上跑 M5 曲线与错位对照，并按 `docs/M5_ROBUSTNESS_RESULTS_TEMPLATE.md` 交结果文档；
+   ③锁定 D-016（遮蔽口径）与 D-018（预算）。命令与验收见 `TRAINING_HANDOFF.md` §0 / §4.5，
+   同步约定见 `docs/TEAM_HANDOFF.md` §〇。
 
 1. **B0–B7 全部已实现**：`configs/b0–b7.yaml` 可用（B4/B5 = Week 3，B6/B7 = Week 4）；下游 MLP 仍未实现。
 2. **M1 收尾（数据，需队友）**：确认 STRING 版本/物种/阈值（D-005）、gene_text 来源与压缩方式（D-012/D-017）、DE 标签规则（D-014），然后跑真实数据构建。

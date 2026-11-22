@@ -1,14 +1,37 @@
-# 队友交接说明（Week 2 结束 → 下一阶段开始前）
+# 队友交接说明（2026-11-22 更新：Week 5 / M5 同步任务）
 
-> 面向：负责数据与生物学解释、以及 5090 服务器训练的同学。
-> 仓库：https://github.com/huqian2024/CoFi-Gene ｜ 分支：**`main`**（2026-11-15 起已包含 Week 2/Week 3 全部成果，`feat/week2-data-pipeline` 已合并冻结）
-> 本文件只讲"现在能用的东西 + 需要你确认/准备的事"。详细状态见 `docs/STATUS.md`。
+> 面向：负责数据与生物学解释、以及 GPU 服务器训练的同学。
+> 仓库：https://github.com/huqian2024/CoFi-Gene ｜ 分支：**`main`**（已含 Week 2 – Week 5；代码基线 `f1c95c1`）
+> 本文件只讲"现在能用的东西 + 需要你确认/准备的事"。详细状态见 `docs/STATUS.md`；
+> 训练命令与验收细节见根目录 **`TRAINING_HANDOFF.md`**（本轮任务在它的 §0 与 §4.5）。
 
 ---
 
+## 〇、现在需要你做的事（2026-11-22，最新）
+
+> 下面三件是本周全部；`docs/TEAM_HANDOFF.md` 其余章节已按最新状态标注，历史内容保留但不再代表现状。
+
+| 顺序 | 任务 | 完成标准 | 详细位置 |
+| --- | --- | --- | --- |
+| **S1 同步代码** | 首轮真实训练用的 3 个修复提交（`d3c5433a435b` 基因符号数字后缀、`7386d5ab7e4f` GCN 邻接 CUDA 设备、`0df87b474f02` 无参数 B0 评估）**只在服务器分支上，`origin` 没有**；同时要把 `origin/main`（含 M5）合进你的训练分支 | 这三个提交出现在 `origin` 的某个分支上；本地 `python -m pytest -q` → **218 passed** | `TRAINING_HANDOFF.md` §0.1 / §0.2 |
+| **S2 跑 M5** | 真实数据 + seed 42：①主曲线 B0–B7 × {0, 0.1, 0.3, 0.5}；②Gene ID 错位对照（b3–b7，ratio 0）；③可选双视图遮蔽 | `runs/m5_robustness/` 有 `summary.json/.md`；按 `docs/M5_ROBUSTNESS_RESULTS_TEMPLATE.md` 写 `docs/M5_ROBUSTNESS_RESULTS_<日期>.md` 并 push | `TRAINING_HANDOFF.md` §4.5 |
+| **S3 定口径** | D-016（是否启用"双视图均遮蔽"）、D-018（训练预算是否固定为当前占位值） | 在 `docs/DECISIONS.md` 对应条目写结论（改状态列 + 一句依据） | `docs/DECISIONS.md` P2/P1 表 |
+
+**同步约定（避免互相覆盖）**
+
+- 分支同步顺序固定：`git fetch origin` → `git merge origin/main`（保留 M5 代码）→ 跑 `pytest -q`（218 passed）→ `git push origin <你的分支>`。
+- 只 push **代码与文档**；`data/`、`runs/`、`model.pt`、`manifest.json` 不入库。
+- `src/cofi_gene/perturbation.py` 与协议默认值由 coding 侧维护；你只通过 config / CLI
+  （`--edge-drop-fraction` / `--mask-other-view` / `--misalign-cross-view`）使用。
+  要改协议口径，先改 `docs/DECISIONS.md`（新增条目或更新 D-024/025/026），不要直接改代码。
+- 结果写到**新文件** `docs/M5_ROBUSTNESS_RESULTS_<日期>.md`，只在 `docs/STATUS.md` 的"下一步"处加一行链接；
+  `STATUS.md` 其余段落由 coding 侧维护，避免冲突。
+- 我这边（coding）本轮不改 `docs/ALL_MODELS_RESULTS_2026-11-19.md`、`docs/FIRST_ROUND_RESULTS.md` 等你已提交的结果文档。
+
+
 ## 一、Week 2 已经完成什么（可以当黑盒用的部分）
 
-一句话：**数据从原始文件到可训练数据集、再到 B0–B3 上游训练评估的整条链路已经写完，并在合成假数据上跑通。**
+一句话：**数据从原始文件到可训练数据集、再到 B0–B7 上游训练评估的整条链路已经写完，并在合成假数据上跑通；真实数据首轮已由你在 RTX 4090 上完成。**
 
 | 能力 | 状态 | 你可以怎么用 |
 | --- | --- | --- |
@@ -20,13 +43,15 @@
 | PIE DE 读取 + 标签规则 | ✅ 代码完成 | 规则默认 `p_adj<0.05`，**待你确认**（D-014） |
 | B0–B3 训练与评估（AUPRC/AUROC） | ✅ 代码完成 | `python -m cofi_gene.train --config configs/b3.yaml` |
 | **B4 门控融合 / B5 跨图注意力（Week 3 新增）** | ✅ 代码完成 | `configs/b4.yaml`（单层 Linear 门控）/ `configs/b5.yaml`（4 头 × 32 维、残差默认关）；详见 `docs/WEEK3_IMPLEMENTATION_REPORT.md` |
+| **B6/B7 单轮边权反馈（Week 4）** | ✅ 代码完成 | `configs/b6.yaml`（B5+反馈）/ `configs/b7.yaml`（B4+反馈）；无新增参数，α=0 严格退回 B5/B4 |
+| **Week 5 / M5：缺边鲁棒性 10/30/50%、双视图遮蔽、Gene ID 错位** | ✅ 代码 + 协议完成 | `scripts/run_robustness.py` 批量出曲线；协议见 `docs/WEEK5_IMPLEMENTATION_REPORT.md`；**真实数据曲线待你执行（见 §〇）** |
 | 可复现性 | ✅ 已验证 | 同 seed 两次运行，loss 与指标完全一致（B3/B4/B5 均有参数化用例） |
 
-**已验证的范围（不要夸大）**：以上全部只在 **合成假数据 + CPU** 上验证过。
-**没有验证**：任何真实 STRING/PIE 文件、任何 GPU（5090 一行代码都没跑过）、B6/B7（Feedback）、下游 DE 预测。
+**已验证的范围（不要夸大）**：代码侧全部在 **合成假数据 + CPU** 上验证过（`218 passed`）；
+真实数据首轮（B0–B7，seed 42，RTX 4090）由你完成并已合并，见 `docs/ALL_MODELS_RESULTS_2026-11-19.md`。
+**仍未验证**：RTX 5090、Week 5 的真实数据曲线、下游 DE MLP（M6）、多种子（M7）。
 
-Week 3 的规矩：**B4/B5 已实现，但门控/注意力/双图监督的具体形式是"工程默认"（D-019/D-020/D-021），
-需要你我确认后才会写进报告方法节；B6/B7 本周不做。**
+Week 3/4 的规矩：**B4–B7 已实现，但门控/注意力/反馈的具体形式是"工程默认"（D-019/D-020/D-022），需要两人确认后才写进报告方法节；B6/B7 已于 Week 4 完成，当前主线是 Week 5 / M5。**
 
 ---
 
