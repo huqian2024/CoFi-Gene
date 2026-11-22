@@ -19,7 +19,7 @@
 - 下载一个 cell-line 的 PIE parquet 或获取其 schema，用 `inspect_pie_de.py` 做抽样检查。
 - 决定基因 ID 映射规则、标签阈值、128 维压缩方案；记录到决策表。然后才开始真模型训练。
 
-## 训练交付合同（B0–B3 已实现，B4–B7 待实现）
+## 训练交付合同（B0–B7 均已实现）
 
 标准调用（已可用，需先构建数据集）：
 
@@ -30,7 +30,8 @@ python -m cofi_gene.train --config configs/b3.yaml --seed 42
 
 `python -m cofi_gene.train --config ... --seed ...` 支持 `--dataset/--device/--out-dir/--epochs/--run-name/--dry-run`。
 每个 run 在 `runs/<run_name>/` 下写 `metrics.json`（config、seed、dataset sha256、git commit、版本、val/test 指标、完整 history）、`config.json`、`model.pt`。
-B4–B7 目前会被注册表拒绝（`NotImplementedError`），以避免用占位实现产出消融表。
+B0–B7 均已实现（`IMPLEMENTED_MODELS`）；B6/B7 需要先调用 `set_encoding_graphs(encode_edges, encode_weights, num_nodes)` 才能 `forward()`，
+训练器已自动接线（见 `docs/WEEK4_IMPLEMENTATION_REPORT.md`）。
 
 训练方每个 run 需归档：git commit、config、seed、数据 manifest hash、Python/Torch/PyG/CUDA 版本、完整日志、validation/test metrics、checkpoint 路径、运行错误。测试集指标不用于调参。
 
@@ -67,5 +68,21 @@ CI run 41283635590（`data-and-splits` ✅ / `torch-cpu` ✅）；`pytest -q` �
 `tests/test_week3_models.py`；合成数据（60 基因/16 维）上 B3/B4/B5 用 `--skip-test` 端到端跑通，产物在 `runs/week3_smoke/`；
 详细报告见 **`docs/WEEK3_IMPLEMENTATION_REPORT.md`**；新增待确认项 **D-019 / D-020 / D-021**（门控形式、注意力形式、双图监督方式）。
 参数统计（feature_dim=16, hidden=128）：B0 2,176 ｜ B1/B2 18,688 ｜ **B3 = B4 = 70,272（参数对齐）** ｜ B5 169,344。
+
+
+## 真实数据首轮 + Week 4 结果（2026-11-19 训练机产出，2026-11-22 合并）
+
+| 里程碑 | 代码侧 | 数据/训练侧 |
+| --- | --- | --- |
+| M4 | ✅ B6/B7 单轮边权反馈（无参数，α=0 严格退回 B5/B4）；`pytest -q` → 186 passed | ✅ 训练机 `B6/B7` 真实数据跑通（结果并入下方 B0–B7） |
+| M5 | ⛔ 缺边鲁棒性 10/30/50%、Gene ID 错位对照**未实现** | ⛔ 未开始 |
+| M6 | ⛔ 下游 DE MLP **未实现** | ⏳ PIE 标签审计完成（98.71% 目标对齐），DE 实验未跑 |
+| M7 | ⛔ 3 seed 汇总未做 | ⏳ 仅 seed 42 |
+
+证据：`docs/ALL_MODELS_RESULTS_2026-11-19.md`（B0–B7 全表）、`docs/FIRST_ROUND_RESULTS.md`（B0–B5）；
+真实数据 = STRING v12.0 人类 9606（A experimental≥400 / B coexpression≥150，18,002 节点、144,071 / 871,260 边、重合 42,035）+ PIE；
+环境 = RTX 4090 24 GB / torch 2.5.1+cu121 / PyG 2.8.1。
+阻塞：结果引用的三个修复提交（`d3c5433a435b`、`7386d5ab7e4f`、`0df87b474f02`）只存在于训练机分支 `codex/real-data-first-round`，
+未进入本仓库，因此本仓库无法独立复现该轮真实数据结果。
 
 

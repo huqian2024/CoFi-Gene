@@ -1,8 +1,53 @@
 # 项目状态（每次合并 PR 后更新）
 
-最后更新：2026-11-15（**Week 4 / M4 代码 + CPU 合成数据验证完成**：B6/B7 单轮边权反馈实现、186 测试通过、防泄漏审计与 α=0 等价性验证完成；真实 STRING/PIE 与 RTX 5090 **仍未验证**）
-阶段：**M4 代码完成（合成数据 + CPU）→ 真实数据首轮训练（P2）尚未开始**
-详细报告：[`docs/WEEK4_IMPLEMENTATION_REPORT.md`](WEEK4_IMPLEMENTATION_REPORT.md)（Week 3 见 `WEEK3_IMPLEMENTATION_REPORT.md`）
+最后更新：2026-11-22（**合并队友真实数据 B0–B7 首轮结果**：`origin/main` `ae0b46b..d6a86bd` 快进合并，新增 `docs/ALL_MODELS_RESULTS_2026-11-19.md`、`docs/FIRST_ROUND_RESULTS.md`；本仓库 `186 passed`。真实数据首轮由队友在 **RTX 4090** 完成，其三个训练修复提交**尚未进入本仓库**）
+阶段：**P2 真实数据首轮（单 seed=42）已完成并合并 → 下一步：修复提交回仓 + 下游 DE MLP（M6）+ 缺边鲁棒性（M5）+ 3 seed（M7）**
+详细报告：[`docs/ALL_MODELS_RESULTS_2026-11-19.md`](ALL_MODELS_RESULTS_2026-11-19.md)（B0–B7 全表）｜[`docs/FIRST_ROUND_RESULTS.md`](FIRST_ROUND_RESULTS.md)（B0–B5 首轮）｜[`docs/WEEK4_IMPLEMENTATION_REPORT.md`](WEEK4_IMPLEMENTATION_REPORT.md)（Week 3 见 `WEEK3_IMPLEMENTATION_REPORT.md`）
+
+## 真实数据首轮结果（队友提交于 2026-11-16 / 2026-11-19，2026-11-22 合并）
+
+| 项 | 值 |
+| --- | --- |
+| 合并方式 | `git merge --ff-only origin/main`：`ae0b46b..d6a86bd`，2 个提交、**仅 2 个新增 markdown，无代码改动** |
+| 数据 | STRING v12.0 / 人类 9606：图 A experimental≥400 = 144,071 边，图 B coexpression≥150 = 871,260 边，重合 42,035，Jaccard=0.043188；节点 18,002；`gene_text` 3,072→128 PCA |
+| 下游数据审计 | PIE 四细胞系 36,258,678 行，1,833/1,857 扰动目标对齐（98.71%），候选标签 `p_adj<0.05`；**DE 实验仍未跑** |
+| 上游协议 | train/val/test = 80/10/10；每 split 1:1 固定负样本（阳性率 50%，随机 AP 基线≈0.5）；`mask_other_view=false`（D-016 口径：另一视图可见） |
+| 训练预算 | Adam lr=0.01 / wd=0 / ≤200 epoch / eval_every=10 / patience=50 / grad_clip=5，与 `configs/_base.yaml` 一致；B0 无参数，优化步数为 0 |
+| 环境 | RTX 4090 24 GB / 驱动 580.178.04 / Python 3.11.15 / torch 2.5.1+cu121 / PyG 2.8.1（**不是 5090**） |
+| 测试 | 训练机回归 187 passed、1 skipped（CUDA 探针专用）；合并后本仓库 `186 passed`（4.53 s，CPU） |
+
+测试 AP（`average_precision`，seed 42；B1 只评图 A、B2 只评图 B）：
+
+| 模型 | A 测试 AP | B 测试 AP | 双通道平均 |
+| --- | --- | --- | --- |
+| B0 特征点积 | 0.8078 | 0.6826 | 0.7452 |
+| B1 单图 A | **0.9618** | — | — |
+| B2 单图 B | — | **0.9670** | — |
+| B3 拼接 | 0.9394 | 0.9355 | 0.9375 |
+| B4 Gate | 0.9609 | 0.9587 | 0.9598 |
+| B5 Attention | 0.9431 | 0.9408 | 0.9419 |
+| B6 Attention+反馈 | 0.9444 | 0.9398 | 0.9421 |
+| B7 Gate+反馈 | 0.9592 | 0.9615 | **0.9603** |
+
+可以写进报告、但必须标注“单 seed + 当前口径”的判断：
+
+- **图学习优于固定文本特征**：B1−B0 在 A 上 +0.1540，B2−B0 在 B 上 +0.2844（同时含 GCN 结构与可训练参数，无法拆分贡献）。
+- **融合尚未超过对应单图**：A 最高仍是 B1，B 最高仍是 B2；B 通道上双图最好的 B7 比 B2 低约 0.0056。
+- **Gate 优于 Attention**：B4 比 B3 高约 +0.022；B5 比 B4 低约 −0.018；带反馈时 B7 > B6。
+- **反馈收益很小且方向随通道翻转**：B6−B5 = A +0.0014 / B −0.0010；B7−B4 = A −0.0017 / B +0.0028。
+- 代码事实（已在本仓库核对）：B3–B7 的 `encode()` 对两个通道返回**同一份融合向量**，且 `edge_head=dot` 解码无参数，因此同一基因对在 A/B 打分相同；A/B 指标差异只来自各自评估边集合不同。
+
+复现风险（下一步必须先处理）：
+
+1. 结果文档引用的三个修复提交 `d3c5433a435b`（基因符号数字后缀被当版本号）、`7386d5ab7e4f`（GCN 邻接张量 CUDA 设备）、`0df87b474f02`（无参数 B0 直接评估）**在本仓库不存在**（`git cat-file` 均为 not-in-this-repo），只保存在训练机 `codex/real-data-first-round` 分支。
+2. `data/processed/real_v1/`、`runs/real_v1/b*_real_v1_seed42/`、`manifest.json` 与 `dataset.npz`（SHA-256 `fee691ce…`）都只在训练机上，本仓库 `data/processed/` 仅有 `ci_synthetic`、`synthetic_v1`。
+3. 只有 seed 42；B1/B2/B4/B5/B7 的最佳 epoch 落在 200 上限，训练预算要按验证集统一确定后才能支撑消融结论。
+
+下一步（按 `AGENTS.md` 范围，不新增模型）：
+
+1. **把三个服务器修复提交推回仓库或重放为补丁**，否则真实结果无法从本仓库复现（需队友配合）。
+2. **下游 DE MLP（M6）仍未实现**，这是 B0–B7 下游 DE AUPRC 对比的前置。
+3. 缺边鲁棒性 10/30/50%（M5）+ `mask_other_view=true` 口径；随后 3 seed（M7）复验反馈与融合结论。
 
 ## Week 4 交付（2026-11-15，M4）
 
@@ -25,7 +70,7 @@
 
 1. **D-016 跨视图遮蔽协议待确认**：默认 `mask_other_view=false`（"另一视图可见"），B6 可间接利用对方视图可见的边。
 2. **`optim.negatives_ratio` 既有配置问题**：只被校验、不生效（负样本在构建期固定，W2-1），改键无效果。
-3. **真实数据与 GPU 验证未完成**：所有"跑通"均为合成数据 + CPU。
+3. **真实数据与 GPU 验证未完成**：所有"跑通"均为合成数据 + CPU。 → **已于 2026-11-16/19 由训练机在 RTX 4090 上以真实数据完成（见开头小节）；本仓库侧仍只有合成数据。**
 4. **反馈成本与偏乐观打分**：每 step 多一次编码（≈2× 前向）；反馈用共享 head 对训练正边打分，`p` 偏高（受 `m=0.5` 限制）。
 5. **D-023 待确认**：当前"每 forward 重算一次反馈"，尚未实现 warmup 后冻结式。
 
@@ -91,8 +136,8 @@
 | --- | --- |
 | ① **代码已实现** | STRING 双通道读取、ID 对齐、图构建、边/目标划分、负采样、泄漏防线、特征压缩、PIE 标签、数据集容器与 manifest、**B0–B7** 训练/评估（B6/B7 为 Week 4 单轮反馈）、两个数据 CLI、配置体系、**186 个测试**、两个 CI job |
 | ② **合成数据 + CPU 已验证** | 上述全部在 `cofi_gene.synthetic` 生成的假 STRING/PIE 上跑通；B0–B7 各有 val/test 指标，训练可复现；B6/B7 另有防泄漏审计与 `α=0` 等价性验证 |
-| ③ **真实数据未验证** | 未下载、未核验任何 STRING / PIE 真实文件；`docs/DATA_CONTRACT.md` 第 3 节表格仍为空；基因交集、边数、覆盖率全部未知 |
-| ④ **GPU 未验证** | 本机只有 RTX 4060 Laptop 且 torch 为 CPU 版；RTX 5090 上的 torch/CUDA（sm_120）、显存与真实规模训练（含 B6/B7 的 2× 前向成本）**均未验证** |
+| ③ **真实数据已验证（训练机）** | 2026-11-16 / 11-19 在训练机用真实 STRING v12.0 + PIE 跑完 B0–B7 上游，数值见 `docs/ALL_MODELS_RESULTS_2026-11-19.md`；但原始数据、manifest、`runs/real_v1/` 与三个修复提交**均未入库**，本仓库仍不能独立复现 |
+| ④ **GPU 已验证（4090，非 5090）** | 真实规模训练在 RTX 4090 24 GB 完成（torch 2.5.1+cu121 / PyG 2.8.1）；RTX 5090（sm_120）与 5090 上的 B6/B7 双前向显存行为**仍未验证** |
 
 ## 已确认的事实
 
@@ -126,8 +171,8 @@
 | B6 One-Step Feedback（B5 + 反馈） | ✅ 已实现，CPU synthetic 已验证 | `models/feedback.py`、`configs/b6.yaml`、`tests/test_week4_{feedback,leakage}.py` |
 | B7 One-Step Feedback（B4 + 反馈） | ✅ 已实现，CPU synthetic 已验证 | 同上（`configs/b7.yaml`） |
 | 下游 DE MLP | **未实现**（M6） | — |
-| 真实 STRING / PIE 数据 | **未下载、未核验** | `docs/DATA_CONTRACT.md` 第 3 节仍为空 |
-| 服务器 torch/CUDA（5090） | **未验证** | 需队友跑 `python scripts/check_environment.py --strict` |
+| 真实 STRING / PIE 数据 | 训练机已验证（哈希与发布记录一致），原始数据未入库 | `docs/ALL_MODELS_RESULTS_2026-11-19.md`；`DATA_CONTRACT.md` 第 3 节已按该文补录 |
+| 服务器 torch/CUDA（4090 已验证 / 5090 未验证） | 4090 上严格 CUDA 探针通过并完成 B0–B7 | 同上（5090 仍需队友跑 `python scripts/check_environment.py --strict`） |
 
 ## 正在执行（Week 4 已交付，下一步起点）
 
@@ -138,8 +183,8 @@
    然后在真实数据上跑 B0–B5 单 seed 冒烟 → 才允许跑多 seed 消融。
 5. **M4 完成（代码 + CPU，2026-11-15）**：B6/B7 单轮边权反馈已实现并验证（`AGENTS.md` 4.3、**D-022**：只调既有边权重，不补边）。
    （此前此处误引 D-009；D-009 实为"基因符号归一化与冲突策略"。细节见 `docs/WEEK4_IMPLEMENTATION_REPORT.md`。）
-6. **真实数据首轮训练（P2，需队友）**：按 [`TRAINING_HANDOFF.md`](../TRAINING_HANDOFF.md) 跑
-   `B3 → B4/B5 → B6/B7`，同一数据集 / seed / 预算；未完成前不得把任何真实数据结论写进报告。
+6. **真实数据首轮训练（P2）已完成（2026-11-19，训练机）**：B0–B7 均在同一数据集 / seed 42 / 预算下跑完，
+   数值与风险见本文开头「真实数据首轮结果」；前置的修复提交仍未回仓，且只有单 seed。
 7. **D-016 / D-018 / D-023 待锁定**：跨视图遮蔽口径、训练预算、反馈重算方式，均会影响实验可比性。
 
 ## Week 2 明确未做 / 不做的部分
@@ -190,8 +235,8 @@
 
 ## 明确的限制（不得当成已完成）
 
-1. 所有"跑通"均基于**合成数据**（`cofi_gene.synthetic`），不是真实 STRING/PIE，也不是任何生物学结论。
-2. 训练仅在 **CPU** 上验证过；RTX 5090 的 torch/CUDA（sm_120）与显存行为**未验证**。
+1. 本仓库（开发机）内的自动化验证仍基于**合成数据**（`cofi_gene.synthetic`）；真实 STRING/PIE 首轮结果由训练机产出（见开头小节），但原始数据、权重与 run 目录未入库，**不能在本仓库重现**。
+2. 训练在开发机 **CPU**（合成数据）与训练机 **RTX 4090**（真实数据）上验证过；RTX 5090 的 torch/CUDA（sm_120）与显存行为**仍未验证**。
 3. `configs/_base.yaml` 的 lr/epochs/early-stop 是**占位值**；合成小图上 loss 曾出现尖峰（2.4→128→收敛），说明超参仍需在 M3 固定。
 4. 未做：**B6–B7（Feedback）**、缺边鲁棒性（10/30/50%）、Gene ID 错位对照、下游 DE MLP、跨种子汇总、三类图。
    （B4/B5 已在 Week 3 补齐；B0–B5 仍未在真实数据或 GPU 上跑过。）

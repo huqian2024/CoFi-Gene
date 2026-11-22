@@ -29,12 +29,18 @@ PIE `de/<cell_line>.parquet` 公开的列包括：`target`（扰动目标）、`
 
 ## 3. 数据清单（下载后填真实值）
 
+> 2026-11-22 按 `docs/ALL_MODELS_RESULTS_2026-11-19.md` / `docs/FIRST_ROUND_RESULTS.md` 补录训练机实测值。
+> 原始文件的 sha256 与完整构建配置记录在训练机 `data/processed/real_v1/manifest.json`，**未随仓库提交**；
+> 数据集产物 `dataset.npz` 的 SHA-256 为 `fee691ce1da49aa055c12003635a527bb3acabe9f087c99c239dc4e665f8685d`（八个模型共用）。
+
 | 来源 | 版本/commit | sha256 | 基因/边或行数 | 下载地址/相对路径 |
 | --- | --- | --- | --- | --- |
-| STRING A experimental | 待填写 | 待填写 | 待填写 | 待填写 |
-| STRING B coexpression | 待填写 | 待填写 | 待填写 | 待填写 |
-| PIE gene_text | 待填写 | 待填写 | 待填写 | 待填写 |
-| PIE DE / preprocessed | 待填写 | 待填写 | 待填写 | 待填写 |
+| STRING A experimental | STRING v12.0 / 人类 9606 / `experimental≥400` | 见训练机 manifest | 144,071 条边（18,002 节点） | [STRING download](https://string-db.org/cgi/download?species_text=Homo+sapiens)（detailed 通道文件） |
+| STRING B coexpression | STRING v12.0 / 人类 9606 / `coexpression≥150` | 见训练机 manifest | 871,260 条边；与 A 重合 42,035（Jaccard=0.043188） | 同上 |
+| PIE gene_text | `ae4ce640b7edff7ac4acfd1abed74ca4138e5931` | 与发布记录一致（校验通过） | 3,072 维 → PCA 128 维 | [PIE_sources](https://huggingface.co/datasets/arcinstitute/PIE_sources/tree/ae4ce640b7edff7ac4acfd1abed74ca4138e5931) |
+| PIE DE / preprocessed | `5119439699a8a02b0f6ebe593cf0dd373891bd37` | 四份 parquet 与发布记录一致 | 四细胞系 36,258,678 行；1,833/1,857 扰动目标对齐（98.71%） | [PIE_replogle_nadig_essential](https://huggingface.co/datasets/arcinstitute/PIE_replogle_nadig_essential/tree/5119439699a8a02b0f6ebe593cf0dd373891bd37) |
+
+标签规则（候选，D-014 仍未正式锁定）：`p_adj < 0.05`，`min_abs_log2fc` 默认关闭。
 
 不得将大型原始数据和授权密钥放入 Git 仓库；保存 manifest、可重现下载命令和转换脚本。
 
