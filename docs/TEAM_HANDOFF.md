@@ -28,8 +28,7 @@
   `STATUS.md` 其余段落由 coding 侧维护，避免冲突。
 - 我这边（coding）本轮不改 `docs/ALL_MODELS_RESULTS_2026-11-19.md`、`docs/FIRST_ROUND_RESULTS.md` 等你已提交的结果文档。
 
-
-## 一、Week 2 已经完成什么（可以当黑盒用的部分）
+## 一、已经完成什么（可以当黑盒用的部分，Week 2 – Week 5）
 
 一句话：**数据从原始文件到可训练数据集、再到 B0–B7 上游训练评估的整条链路已经写完，并在合成假数据上跑通；真实数据首轮已由你在 RTX 4090 上完成。**
 
@@ -118,7 +117,7 @@ data/raw/pie/de/{K562,RPE1,HepG2,Jurkat}.parquet
 git clone https://github.com/huqian2024/CoFi-Gene.git && cd CoFi-Gene
 git checkout main
 python -m pip install -e '.[dev,data]'
-python -m pytest -q                       # 期望 147 passed（Week 2 时为 99）
+python -m pytest -q                       # 期望 218 passed（Week 2 时为 99）
 python scripts/check_environment.py --strict   # 必须退出码 0
 ```
 
@@ -128,7 +127,7 @@ python scripts/check_environment.py --strict   # 必须退出码 0
       `--strict` 会同时要求 torch、PyG 与 CUDA 张量算子都可用。
       **若 PyG 在 sm_120 上装不上**：先跑 `python scripts/check_environment.py`（不加 `--strict`），
       把 `torch` / `cuda_available` / `compute_capability` 三项贴回来，并注明 "PyG 未安装"。
-      上游训练只用 torch，**没有 PyG 也能跑 B0–B3**；这点已记录在 D-013，不要为了过 `--strict` 硬装不兼容的轮子。
+      上游训练只用 torch，**没有 PyG 也能跑 B0–B7**；这点已记录在 D-013，不要为了过 `--strict` 硬装不兼容的轮子。
 - [ ] 记录并贴回：Python / torch / CUDA 版本、GPU 型号与显存（不要贴 token、账号、ssh key）
 - [ ] 安装与 sm_120（5090 架构）匹配的 torch wheel；若官方轮子暂不支持，记录报错原文，不要自己造数据
 - [ ] 跑一次最小的真实训练链路确认显存与速度：
@@ -144,7 +143,7 @@ python -m cofi_gene.train --config configs/b3.yaml --dataset data/processed/synt
 
 ---
 
-## 五、下一阶段的前置条件（四条全满足才开工）
+## 五、下一阶段的前置条件（历史记录：2026-11-19 已满足，本轮任务见 §〇）
 
 1. **P0 三项锁定**：D-005（STRING 版本/阈值）、D-009（符号冲突）、D-014（DE 标签）。
 2. **服务器验证通过**：5090 上 `--strict` 成功 + GPU 版 `smoke_cuda_b3` 跑出 `metrics.json`。
