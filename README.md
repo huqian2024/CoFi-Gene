@@ -7,11 +7,12 @@
 
 **先读**：`AGENTS.md`（研究范围与 B0–B7 设计）→ [`docs/STATUS.md`](docs/STATUS.md)（当前事实与下一步）→ [`docs/DECISIONS.md`](docs/DECISIONS.md)（已锁定及待确认决定）→ [`docs/DATA_CONTRACT.md`](docs/DATA_CONTRACT.md)（数据约定）→ [`docs/TEAM_HANDOFF.md`](docs/TEAM_HANDOFF.md)（队友视角交接：已完成/需确认/需准备/需验证）。
 
-> 当前状态：数据管线、B0–B3（Week 2）、**B4/B5（Week 3）** 与 **B6/B7（Week 4：One-Step Graph Feedback）** 均已实现，
-> 本机在**合成数据 + CPU** 上验证（186 个用例；B6/B7 已通过防泄漏审计与 `α=0` 等价性验证）；
+> 当前状态：数据管线、B0–B3（Week 2）、**B4/B5（Week 3）**、**B6/B7（Week 4：One-Step Graph Feedback）**
+> 与 **Week 5 / M5（缺边鲁棒性、双视图遮蔽、Gene ID 错位对照）** 的代码均已实现，
+> 本机在**合成数据 + CPU** 上验证（218 个用例；B6/B7 已通过防泄漏审计与 `α=0` 等价性验证）；
 > **真实 STRING/PIE 首轮（B0–B7，seed 42）已由队友在 RTX 4090 上完成并合并**，结果见
 > [`docs/ALL_MODELS_RESULTS_2026-11-19.md`](docs/ALL_MODELS_RESULTS_2026-11-19.md)，但其修复提交与数据产物尚未入库；
-> 缺边鲁棒性、下游 DE MLP、3 seed 与 RTX 5090 验证**仍未完成**。
+> M5 的真实数据曲线、下游 DE MLP、3 seed 与 RTX 5090 验证**仍未完成**。
 > 详见 [`docs/STATUS.md`](docs/STATUS.md) 的"四层状态区分"、[`docs/WEEK4_IMPLEMENTATION_REPORT.md`](docs/WEEK4_IMPLEMENTATION_REPORT.md) 与 Week 3 报告。
 
 ## 研究边界

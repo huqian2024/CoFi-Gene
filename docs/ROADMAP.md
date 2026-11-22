@@ -86,3 +86,15 @@ CI run 41283635590（`data-and-splits` ✅ / `torch-cpu` ✅）；`pytest -q` �
 未进入本仓库，因此本仓库无法独立复现该轮真实数据结果。
 
 
+
+## Week 5 交付结果（2026-11-22，M5 代码侧）
+
+| 里程碑 | 代码侧 | 数据/训练侧 |
+| --- | --- | --- |
+| M5 | ✅ 缺边鲁棒性（0/0.1/0.3/0.5）、双视图遮蔽、Gene ID 错位对照 + `scripts/run_robustness.py`；`218 passed` | ⏳ 真实数据曲线未跑（属训练方；每格 = 一次完整训练） |
+
+证据：`cofi_gene/perturbation.py`、`models/__init__.py`（`set_cross_view_permutation`）、`scripts/run_robustness.py`、
+`tests/test_week5_{perturbation,cross_view,robustness_script}.py`（+32 例）、`.github/workflows/ci.yml` 的 M5 冒烟；
+详细说明见 **`docs/WEEK5_IMPLEMENTATION_REPORT.md`**，决策见 D-024/D-025/D-026。
+未开启扰动时 B0–B7 的 config/hash/metrics 与 Week 4 逐字节一致（有 `edge_drop_fraction=0` 等价性用例）。
+

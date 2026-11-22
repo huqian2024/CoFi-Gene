@@ -12,10 +12,12 @@
 ### 工程命令速查（不改变研究范围）
 
 - 安装：`python -m pip install -e '.[dev,data]'`；上游训练另装 `.[train]`（CPU 机器：`pip install --index-url https://download.pytorch.org/whl/cpu torch`）。
-- 测试：`python -m pytest -q`（147 个用例；缺少 torch / pyarrow 时相关用例自动 skip）。
+- 测试：`python -m pytest -q`（218 个用例；缺少 torch / pyarrow 时相关用例自动 skip）。
 - 合成数据端到端：`python scripts/make_synthetic_dataset.py --raw data/raw/synthetic_v1 --processed data/processed/synthetic_v1`
 - 真实数据构建：填好 `configs/data.yaml` 后 `python scripts/build_dataset.py --config configs/data.yaml --out data/processed/<name>`
 - 训练：`python -m cofi_gene.train --config configs/b3.yaml --seed 42`（产物在 `runs/<run_name>/`；B4/B5 用 `configs/b4.yaml`、`configs/b5.yaml`）
+- M5 协议（Week 5）：单次训练加 `--edge-drop-fraction 0.3` / `--mask-other-view` / `--misalign-cross-view`；
+  批量曲线用 `python scripts/run_robustness.py --dataset data/processed/<name> --device cuda`（每个 `(模型, 比例)` 是一次完整训练，结果写 `summary.json/md`）
 - 目前实现 **B0–B7**（B4 门控融合、B5 跨图注意力、B6/B7 单轮边权反馈，`IMPLEMENTED_MODELS` 已含全部八组）；Week 3 细节见 `docs/WEEK3_IMPLEMENTATION_REPORT.md`，Week 4 见 `docs/WEEK4_IMPLEMENTATION_REPORT.md`，真实数据首轮结果见 `docs/ALL_MODELS_RESULTS_2026-11-19.md`。
 
 **Cross-Graph Attention and Feedback-Guided Gene Embedding Learning**

@@ -1,8 +1,23 @@
 # 项目状态（每次合并 PR 后更新）
 
-最后更新：2026-11-22（**合并队友真实数据 B0–B7 首轮结果**：`origin/main` `ae0b46b..d6a86bd` 快进合并，新增 `docs/ALL_MODELS_RESULTS_2026-11-19.md`、`docs/FIRST_ROUND_RESULTS.md`；本仓库 `186 passed`。真实数据首轮由队友在 **RTX 4090** 完成，其三个训练修复提交**尚未进入本仓库**）
-阶段：**P2 真实数据首轮（单 seed=42）已完成并合并 → 下一步：修复提交回仓 + 下游 DE MLP（M6）+ 缺边鲁棒性（M5）+ 3 seed（M7）**
-详细报告：[`docs/ALL_MODELS_RESULTS_2026-11-19.md`](ALL_MODELS_RESULTS_2026-11-19.md)（B0–B7 全表）｜[`docs/FIRST_ROUND_RESULTS.md`](FIRST_ROUND_RESULTS.md)（B0–B5 首轮）｜[`docs/WEEK4_IMPLEMENTATION_REPORT.md`](WEEK4_IMPLEMENTATION_REPORT.md)（Week 3 见 `WEEK3_IMPLEMENTATION_REPORT.md`）
+最后更新：2026-11-22（**Week 5 / M5 代码完成 + 合并队友真实数据首轮结果**）。Week 5：缺边鲁棒性（10/30/50%）、双视图遮蔽、Gene ID 错位对照的代码与协议已落地，`218 passed`，CI 增加 M5 冒烟；**真实数据上的曲线仍由训练方执行**。合并：`origin/main` `ae0b46b..d6a86bd`（仅新增 2 个结果 markdown，无代码改动）。
+阶段：**M5 代码完成（合成数据 + CPU 验证）→ 等训练方在真实数据上跑曲线；M6 下游 DE MLP 仍未实现**
+详细报告：[`docs/ALL_MODELS_RESULTS_2026-11-19.md`](ALL_MODELS_RESULTS_2026-11-19.md)（B0–B7 全表）｜[`docs/FIRST_ROUND_RESULTS.md`](FIRST_ROUND_RESULTS.md)（B0–B5 首轮）｜[`docs/WEEK5_IMPLEMENTATION_REPORT.md`](WEEK5_IMPLEMENTATION_REPORT.md)（Week 5 / M5）｜[`docs/WEEK4_IMPLEMENTATION_REPORT.md`](WEEK4_IMPLEMENTATION_REPORT.md)（Week 3 见 `WEEK3_IMPLEMENTATION_REPORT.md`）
+
+## Week 5 交付（2026-11-22，M5 代码侧）
+
+| 项 | 值 |
+| --- | --- |
+| 范围 | `AGENTS.md` §6 实验二（10/30/50% 缺边）、实验三（Gene ID 错位）；**不新增模型**，不改数据管线/划分语义 |
+| 新增文件 | `src/cofi_gene/perturbation.py`、`scripts/run_robustness.py`、`tests/test_week5_{perturbation,cross_view,robustness_script}.py`、`docs/WEEK5_IMPLEMENTATION_REPORT.md` |
+| 修改文件 | `models/__init__.py`（`CROSS_VIEW_MODELS` + `set_cross_view_permutation`）、`config.py`（3 个可选 `data.*` 键）、`train.py`（扰动接线 + `perturbation` 记录 + 3 个 CLI 开关）、`.github/workflows/ci.yml`、`README.md`、`docs/{DECISIONS,ROADMAP,STATUS}.md` |
+| 删边协议 | 只删 `encode_edges`；`val/test` 正边与固定负样本不动；种子 = `SeedSequence([seed, channel_index, 0xC0F1])`、与比例无关 → 10% ⊂ 30% ⊂ 50%；每个单元重训 |
+| 遮蔽协议 | 对通道 X 的 val/test 正边 `p`，从另一通道 Y 的 `encode_edges` **和** `train` 正边删除；默认关闭（D-016 未锁定） |
+| 错位对照 | 只允许 b3–b7；derangement 由 `(N, seed)` 生成，融合前对单个视图 `index_select`；non-persistent buffer，`state_dict` 不变 |
+| 测试 | `pytest -q` → **218 passed**（+32：12 numpy + 14 torch + 6 脚本） |
+| CI | `torch-cpu` 增加 drop=0.3 / misalign / drop=0.0 三次冒烟 + `b1` 两格 sweep + JSON 断言 |
+| 兼容性 | 不开启扰动时 config/hash/run 名/`metrics.json` 与 Week 4 完全一致（`edge_drop_fraction=0` 与基线逐位相等） |
+| 未做（训练方边界内） | 真实数据曲线实跑、`mask_other_view=true` 口径的正式确认、3 seed、下游 DE |
 
 ## 真实数据首轮结果（队友提交于 2026-11-16 / 2026-11-19，2026-11-22 合并）
 
@@ -14,7 +29,7 @@
 | 上游协议 | train/val/test = 80/10/10；每 split 1:1 固定负样本（阳性率 50%，随机 AP 基线≈0.5）；`mask_other_view=false`（D-016 口径：另一视图可见） |
 | 训练预算 | Adam lr=0.01 / wd=0 / ≤200 epoch / eval_every=10 / patience=50 / grad_clip=5，与 `configs/_base.yaml` 一致；B0 无参数，优化步数为 0 |
 | 环境 | RTX 4090 24 GB / 驱动 580.178.04 / Python 3.11.15 / torch 2.5.1+cu121 / PyG 2.8.1（**不是 5090**） |
-| 测试 | 训练机回归 187 passed、1 skipped（CUDA 探针专用）；合并后本仓库 `186 passed`（4.53 s，CPU） |
+| 测试 | 训练机回归 187 passed、1 skipped（CUDA 探针专用）；合并当时本仓库 `186 passed`（Week 5 起为 `218 passed`） |
 
 测试 AP（`average_precision`，seed 42；B1 只评图 A、B2 只评图 B）：
 
@@ -134,8 +149,8 @@
 
 | 层次 | 内容 |
 | --- | --- |
-| ① **代码已实现** | STRING 双通道读取、ID 对齐、图构建、边/目标划分、负采样、泄漏防线、特征压缩、PIE 标签、数据集容器与 manifest、**B0–B7** 训练/评估（B6/B7 为 Week 4 单轮反馈）、两个数据 CLI、配置体系、**186 个测试**、两个 CI job |
-| ② **合成数据 + CPU 已验证** | 上述全部在 `cofi_gene.synthetic` 生成的假 STRING/PIE 上跑通；B0–B7 各有 val/test 指标，训练可复现；B6/B7 另有防泄漏审计与 `α=0` 等价性验证 |
+| ① **代码已实现** | STRING 双通道读取、ID 对齐、图构建、边/目标划分、负采样、泄漏防线、特征压缩、PIE 标签、数据集容器与 manifest、**B0–B7** 训练/评估（B6/B7 为 Week 4 单轮反馈）、**Week 5 协议扰动（删边/遮蔽/基因错位）+ 批量曲线脚本**、两个数据 CLI、配置体系、**218 个测试**、两个 CI job |
+| ② **合成数据 + CPU 已验证** | 上述全部在 `cofi_gene.synthetic` 生成的假 STRING/PIE 上跑通；B0–B7 各有 val/test 指标，训练可复现；B6/B7 另有防泄漏审计与 `α=0` 等价性验证；Week 5 扰动另有删边/遮蔽的泄漏守卫与错位置换的等价性用例 |
 | ③ **真实数据已验证（训练机）** | 2026-11-16 / 11-19 在训练机用真实 STRING v12.0 + PIE 跑完 B0–B7 上游，数值见 `docs/ALL_MODELS_RESULTS_2026-11-19.md`；但原始数据、manifest、`runs/real_v1/` 与三个修复提交**均未入库**，本仓库仍不能独立复现 |
 | ④ **GPU 已验证（4090，非 5090）** | 真实规模训练在 RTX 4090 24 GB 完成（torch 2.5.1+cu121 / PyG 2.8.1）；RTX 5090（sm_120）与 5090 上的 B6/B7 双前向显存行为**仍未验证** |
 
@@ -156,7 +171,7 @@
 | --- | --- | --- |
 | 原始研究范围 B0–B7 | 已定义 | `AGENTS.md` |
 | 包结构 / 依赖分组 / CI | 已完成 | `pyproject.toml`（core=numpy+pyyaml；extras: data/train/dev）、两个 CI job |
-| 单测总体 | **186 passed**（4.25 s，CPU） | `.venv/bin/python -m pytest -q` |
+| 单测总体 | **218 passed**（4.52 s，CPU；Week 4 为 186，Week 5 新增 32） | `.venv/bin/python -m pytest -q` |
 | STRING 双通道解析（分列、阈值、去重、自环、未知蛋白、combined-score 不当证据） | 已实现，合成数据验证 | `cofi_gene/string_io.py`、`graph_build.py`、`tests/test_string_io.py` |
 | 基因 ID 对齐（符号归一化、多蛋白冲突计数） | 已实现，单测覆盖 | `cofi_gene/gene_ids.py`、`tests/test_gene_ids.py` |
 | 边划分 / 分组划分 / 负样本 | 已实现，含确定性 | `cofi_gene/splits.py`、`negative_sampling.py`、`tests/test_splits.py` |
@@ -170,11 +185,15 @@
 | B5 Cross-Graph Attention | ✅ 已实现，合成数据跑通 | `models/attention.py`、`configs/b5.yaml`、`tests/test_week3_models.py` |
 | B6 One-Step Feedback（B5 + 反馈） | ✅ 已实现，CPU synthetic 已验证 | `models/feedback.py`、`configs/b6.yaml`、`tests/test_week4_{feedback,leakage}.py` |
 | B7 One-Step Feedback（B4 + 反馈） | ✅ 已实现，CPU synthetic 已验证 | 同上（`configs/b7.yaml`） |
+| Week 5 缺边鲁棒性 / 双视图遮蔽 / 基因错位对照 | ✅ 代码 + 协议完成，合成数据验证（真实数据曲线待训练方） | `cofi_gene/perturbation.py`、`scripts/run_robustness.py`、`tests/test_week5_*.py` |
 | 下游 DE MLP | **未实现**（M6） | — |
 | 真实 STRING / PIE 数据 | 训练机已验证（哈希与发布记录一致），原始数据未入库 | `docs/ALL_MODELS_RESULTS_2026-11-19.md`；`DATA_CONTRACT.md` 第 3 节已按该文补录 |
 | 服务器 torch/CUDA（4090 已验证 / 5090 未验证） | 4090 上严格 CUDA 探针通过并完成 B0–B7 | 同上（5090 仍需队友跑 `python scripts/check_environment.py --strict`） |
 
-## 正在执行（Week 4 已交付，下一步起点）
+## 正在执行（Week 5 已交付，下一步起点）
+
+0. **M5 完成（代码 + CPU，2026-11-22）**：删边鲁棒性 / 双视图遮蔽 / 基因错位对照已实现，
+   `python scripts/run_robustness.py` 可批量产出曲线；**真实数据的曲线与 3 seed 需训练方执行**。
 
 1. **B0–B7 全部已实现**：`configs/b0–b7.yaml` 可用（B4/B5 = Week 3，B6/B7 = Week 4）；下游 MLP 仍未实现。
 2. **M1 收尾（数据，需队友）**：确认 STRING 版本/物种/阈值（D-005）、gene_text 来源与压缩方式（D-012/D-017）、DE 标签规则（D-014），然后跑真实数据构建。

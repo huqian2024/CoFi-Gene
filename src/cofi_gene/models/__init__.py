@@ -14,6 +14,14 @@ and fusion modules, and only insert one bounded edge-weight update plus a second
 encoding pass (see :mod:`cofi_gene.models.feedback` and D-022). Models without
 feedback keep the Week 2/3 code path bit-for-bit.
 
+Week 5 (M5) adds one **control**, not a model: ``set_cross_view_permutation``
+registers a fixed derangement that is applied to a single view's rows right
+before fusion. Encoders, supervision and evaluation edges are untouched, so the
+only thing that changes is the A/B gene pairing used by concat/gate/attention
+(``AGENTS.md`` §6 experiment 3). The buffer is non-persistent, which keeps every
+``state_dict`` -- and therefore every recorded run and checkpoint -- unchanged
+unless the control is explicitly switched on.
+
 Supervision stays graph-specific for the dual-graph fusion models: B4/B5 keep two
 independent edge heads (one per channel, D-005) and their own per-channel BCE term.
 B4 fuses to a single ``H``; B5 keeps two source-specific ``Z_A``/``Z_B`` that are
@@ -37,7 +45,7 @@ from .gcn import GCNEncoder, normalized_adjacency
 from .heads import build_edge_head, decode_pairs
 
 __all__ = ["UpstreamModel", "build_model", "IMPLEMENTED_MODELS", "PLANNED_MODELS",
-           "FEEDBACK_MODELS", "BASE_MODEL_OF"]
+           "FEEDBACK_MODELS", "BASE_MODEL_OF", "CROSS_VIEW_MODELS"]
 
 IMPLEMENTED_MODELS = ("b0", "b1", "b2", "b3", "b4", "b5", "b6", "b7")
 #: Nothing is refused any more; kept so callers/tests can still ask the registry.
@@ -55,9 +63,29 @@ SOURCE_SPECIFIC_MODELS = ("b5", "b6")
 FEEDBACK_MODELS = ("b6", "b7")
 BASE_MODEL_OF = {"b6": "b5", "b7": "b4"}
 
+#: Week 5 (M5) control: the only models with a real cross-view interaction, i.e.
+#: where shuffling the A/B gene correspondence is a meaningful experiment.
+#: B0 has no fusion and B1/B2 have a single view, so the control is refused there.
+CROSS_VIEW_MODELS = ("b3", "b4", "b5", "b6", "b7")
+
 _FUSION_KIND = {"b0": "none", "b1": "none", "b2": "none", "b3": "concat",
                 "b4": "gate", "b5": "attention",
                 "b6": "attention", "b7": "gate"}
+
+
+def _check_derangement(perm: torch.Tensor, channel: str) -> None:
+    """Reject anything that is not a fixed-point-free permutation of ``0..N-1``."""
+    nodes = int(perm.numel())
+    if nodes < 2:
+        raise ValueError("cross-view permutation needs at least two genes, "
+                         f"got {nodes}")
+    expected = torch.arange(nodes, dtype=perm.dtype, device=perm.device)
+    if not torch.equal(perm.sort().values, expected):
+        raise ValueError(f"cross-view permutation for channel {channel!r} is not a "
+                         "permutation of 0..N-1")
+    if bool((perm == expected).any()):
+        raise ValueError("cross-view permutation must have no fixed point "
+                         "(the identity map would be a silent no-op)")
 
 
 class UpstreamModel(nn.Module):
@@ -127,6 +155,15 @@ class UpstreamModel(nn.Module):
         # Week 4: only B6/B7 re-encode after one bounded edge-weight update.
         self.feedback = (EdgeWeightFeedback(feedback_alpha, feedback_margin)
                          if name in FEEDBACK_MODELS else None)
+
+        # Week 5 (M5): misalignment control for the cross-view interaction.
+        # ``cross_view_channel`` is the view whose rows get permuted (the second
+        # channel = "B" for the two-view models); ``cross_view_perm`` stays None
+        # unless the trainer registers a derangement. Non-persistent buffer keeps
+        # state_dict/checkpoints byte-identical for every existing run.
+        self.cross_view_channel = (self.channels[-1]
+                                   if name in CROSS_VIEW_MODELS else None)
+        self.register_buffer("cross_view_perm", None, persistent=False)
         self._encoder_graphs: dict[str, torch.Tensor] | None = None
         self._encoder_weights: dict[str, torch.Tensor] | None = None
         self._base_adjacency: dict[str, torch.Tensor] | None = None
@@ -184,6 +221,51 @@ class UpstreamModel(nn.Module):
                                "set_encoding_graphs() first")
         return self._encoder_graphs
 
+    # ------------------------------------- Week 5 (M5) cross-view control
+    @property
+    def cross_view_permutation(self):
+        """Registered derangement of the permuted view, or ``None``."""
+        return self.cross_view_perm
+
+    def set_cross_view_permutation(self, permutation, channel: str | None = None) -> None:
+        """Misalign one view's gene order for the Week 5 control (experiment 3).
+
+        ``permutation[i] = j`` means gene ``i``'s cross-view tokens come from gene
+        ``j`` of the permuted view. Only the pairing consumed by concat/gate/
+        attention changes; both encoders keep their own graphs, and supervision
+        plus the evaluation edges are untouched. A derangement is required because
+        the identity map would be a silent no-op instead of a control.
+        """
+        if self.fusion_kind == "none":
+            raise RuntimeError(f"model {self.name!r} has no cross-view fusion to "
+                               f"misalign; only {CROSS_VIEW_MODELS} support it")
+        target = self.cross_view_channel if channel is None else channel
+        if target not in self.channels:
+            raise ValueError(f"channel {target!r} is not used by model {self.name!r}; "
+                             f"available: {self.channels}")
+        perm = torch.as_tensor(permutation, dtype=torch.long).reshape(-1)
+        _check_derangement(perm, target)
+        self.cross_view_channel = target
+        self.cross_view_perm = perm
+
+    def clear_cross_view_permutation(self) -> None:
+        """Restore the correct A/B gene pairing (the default protocol)."""
+        self.cross_view_perm = None
+
+    def _misalign(self, per_channel: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        """Permute the registered view's rows before fusion (no-op by default)."""
+        perm = self.cross_view_perm
+        if perm is None:
+            return per_channel
+        channel = self.cross_view_channel
+        tensor = per_channel[channel]
+        if tensor.shape[0] != perm.numel():
+            raise ValueError(f"cross-view permutation has {perm.numel()} entries but "
+                             f"channel {channel!r} has {tensor.shape[0]} nodes")
+        misaligned = dict(per_channel)
+        misaligned[channel] = tensor.index_select(0, perm.to(tensor.device))
+        return misaligned
+
 
     # ------------------------------------------------------------- encoding
     def forward(self, x: torch.Tensor, adjacencies: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
@@ -216,6 +298,7 @@ class UpstreamModel(nn.Module):
 
     def _fuse(self, per_channel: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Apply this model's fusion kind; B6/B7 inherit B5/B4 respectively."""
+        per_channel = self._misalign(per_channel)
         kind = self.fusion_kind
         if kind == "concat":
             fused = self.fusion([per_channel[channel] for channel in self.channels])
@@ -272,7 +355,7 @@ class UpstreamModel(nn.Module):
             raise KeyError(f"model {self.name} needs adjacency for channel(s) {missing}")
         per_channel = {channel: self.encoders[channel](x, adjacencies[channel])
                        for channel in self.channels}
-        return self.fusion(per_channel)
+        return self.fusion(self._misalign(per_channel))
 
     def encode(self, x: torch.Tensor, adjacencies: dict[str, torch.Tensor]) -> torch.Tensor:
         """The single ``[N, output_dim]`` embedding handed to the downstream MLP.

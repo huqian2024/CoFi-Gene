@@ -10,6 +10,10 @@ Deliberate protocol choices (all recorded in the run JSON):
   best-validation checkpoint, and never used for tuning.
 - Every run writes config, seed, dataset hash, git commit, package versions and
   the full metric history.
+- Week 5 (M5) protocol perturbations (missing encoder edges, cross-view masking,
+  gene-correspondence shuffle) are optional config keys. When any of them is
+  active the run records a ``perturbation`` block; when none is, the run JSON is
+  byte-identical to the earlier weeks.
 """
 
 from __future__ import annotations
@@ -26,6 +30,8 @@ from .config import dump_config, load_config, resolved_config_hash
 from .dataset import CoFiDataset
 from .manifest import git_commit, runtime_versions, sha256_file, utc_timestamp
 from .metrics import binary_summary
+from .perturbation import (apply_data_perturbations, cross_view_permutation,
+                           permutation_fingerprint)
 
 __all__ = ["set_seed", "train_link_prediction", "evaluate_split", "main"]
 
@@ -123,6 +129,13 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
     device_obj = _resolve_device(device or runtime["device"])
 
     dataset.validate()
+    # Week 5 (M5): optional protocol perturbations. They only shrink what the
+    # encoder may see (``encode_edges``) plus, for ``mask_other_view``, the other
+    # view's training positives; val/test positives and negatives never change.
+    dataset, perturbation = apply_data_perturbations(dataset, config)
+    if perturbation["edge_drop_fraction"] > 0.0 or perturbation["mask_other_view"]:
+        dataset.validate()   # the perturbed graph must still pass every leakage guard
+    misalign = bool((config.get("data") or {}).get("misalign_cross_view", False))
     model = build_model(model_cfg["name"], feature_dim=dataset.num_features,
                         hidden_dim=int(model_cfg["hidden_dim"]),
                         num_layers=int(model_cfg["num_layers"]),
@@ -138,6 +151,15 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
                         feedback_alpha=float(model_cfg.get("feedback_alpha", 0.1)),
                         feedback_margin=float(model_cfg.get("feedback_margin", 0.5)),
                         ).to(device_obj)
+    if misalign:
+        # Week 5 (M5) control: break the A/B gene correspondence in fusion only.
+        permutation = cross_view_permutation(dataset.num_nodes, seed)
+        model.set_cross_view_permutation(permutation)
+        perturbation["misalign_cross_view"] = True
+        perturbation["cross_view"] = {
+            "channel": model.cross_view_channel,
+            "permutation_sha256": permutation_fingerprint(permutation),
+        }
 
     x = torch.as_tensor(dataset.X, dtype=torch.float32, device=device_obj)
     encode_edges, encode_weights = {}, {}
@@ -208,6 +230,8 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
     val_metrics = evaluate_split(model, x, adjacencies, dataset, "val")
     test_metrics = (evaluate_split(model, x, adjacencies, dataset, "test")
                     if evaluate_test else None)
+    active_perturbation = (perturbation["edge_drop_fraction"] > 0.0
+                           or perturbation["mask_other_view"] or misalign)
 
     target_dir = Path(out_dir or runtime["out_dir"])
     run_name = runtime.get("run_name") or (
@@ -257,6 +281,14 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
             "negatives reused from the dataset build so all models see the same draw",
         ],
     }
+    if active_perturbation:
+        record["perturbation"] = perturbation
+        record["notes"].append(
+            "protocol perturbation applied on top of the unchanged dataset.npz "
+            f"(edge_drop_fraction={perturbation['edge_drop_fraction']}, "
+            f"mask_other_view={perturbation['mask_other_view']}, "
+            f"misalign_cross_view={misalign}); val/test positives and the negative "
+            "sample are unchanged")
     (run_dir / "metrics.json").write_text(
         json.dumps(record, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
     dump_config(config, run_dir / "config.json")
@@ -282,6 +314,15 @@ def main(argv: list[str] | None = None) -> int:
                         help="validate config and dataset, print a summary, then exit")
     parser.add_argument("--skip-test", action="store_true",
                         help="do not score the test split at all (Week 3 smoke runs)")
+    parser.add_argument("--edge-drop-fraction", type=float, default=None,
+                        help="Week 5 (M5): drop this fraction of the encoder "
+                             "(training) edges, e.g. 0.1 / 0.3 / 0.5")
+    parser.add_argument("--mask-other-view", action="store_true",
+                        help="Week 5 (M5): also hide each view's held-out pairs in "
+                             "the other view (D-016 'both views masked')")
+    parser.add_argument("--misalign-cross-view", action="store_true",
+                        help="Week 5 (M5): break the A/B gene correspondence inside "
+                             "fusion (experiment 3 control)")
     args = parser.parse_args(argv)
 
     overrides: dict = {}
@@ -297,6 +338,12 @@ def main(argv: list[str] | None = None) -> int:
         overrides.setdefault("optim", {})["epochs"] = args.epochs
     if args.dataset is not None:
         overrides.setdefault("data", {})["processed_dir"] = args.dataset
+    if args.edge_drop_fraction is not None:
+        overrides.setdefault("data", {})["edge_drop_fraction"] = args.edge_drop_fraction
+    if args.mask_other_view:
+        overrides.setdefault("data", {})["mask_other_view"] = True
+    if args.misalign_cross_view:
+        overrides.setdefault("data", {})["misalign_cross_view"] = True
 
     config = load_config(args.config, overrides)
     dataset = CoFiDataset.load(config["data"]["processed_dir"])
@@ -320,6 +367,12 @@ def main(argv: list[str] | None = None) -> int:
           f"best_epoch={record['best_epoch']} "
           f"val_mean_ap={record['best_val_mean_ap']:.4f} "
           f"test_ap={json.dumps(test_ap, sort_keys=True)}")
+    if "perturbation" in record:
+        perturb = record["perturbation"]
+        print("[cofi_gene.train] perturbation="
+              f"edge_drop_fraction={perturb['edge_drop_fraction']} "
+              f"mask_other_view={perturb['mask_other_view']} "
+              f"misalign_cross_view={bool(perturb.get('misalign_cross_view'))}")
     return 0
 
 

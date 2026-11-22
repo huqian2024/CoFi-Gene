@@ -59,7 +59,11 @@ _ALLOWED = {
               "feedback_alpha", "feedback_margin"},
     "optim": {"lr", "weight_decay", "epochs", "negatives_ratio", "eval_every",
               "early_stop_patience", "grad_clip"},
-    "data": {"processed_dir", "weight_mode"},
+    "data": {"processed_dir", "weight_mode",
+             # Optional Week 5 (M5) perturbation keys. Deliberately absent from
+             # DEFAULTS so every B0-B7 config hash, run name and metrics.json
+             # stays byte-identical unless an experiment explicitly opts in.
+             "edge_drop_fraction", "mask_other_view", "misalign_cross_view"},
     "runtime": {"seed", "device", "out_dir", "run_name", "log_every"},
 }
 
@@ -74,6 +78,12 @@ CHANNEL_SETS = {
     "b6": ("A", "B"),
     "b7": ("A", "B"),
 }
+
+#: Models with a real cross-view interaction: the only place where the Week 5
+#: gene-correspondence shuffle (``data.misalign_cross_view``) is meaningful.
+#: B0 has no fusion and B1/B2 encode a single view. Defined here (not imported
+#: from ``cofi_gene.models``) to avoid a circular import.
+CROSS_VIEW_MODELS = ("b3", "b4", "b5", "b6", "b7")
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -172,6 +182,20 @@ def validate_config(config: dict) -> None:
 
     if config["data"]["weight_mode"] not in ("none", "minmax"):
         raise ValueError("data.weight_mode must be 'none' or 'minmax'")
+    # Optional Week 5 (M5) keys: validated only when present (see _ALLOWED).
+    data = config["data"]
+    if "edge_drop_fraction" in data and data["edge_drop_fraction"] is not None:
+        fraction = float(data["edge_drop_fraction"])
+        if not 0.0 <= fraction < 1.0:
+            raise ValueError("data.edge_drop_fraction must be in [0, 1)")
+    if "mask_other_view" in data and not isinstance(data["mask_other_view"], bool):
+        raise ValueError("data.mask_other_view must be true or false")
+    if "misalign_cross_view" in data:
+        if not isinstance(data["misalign_cross_view"], bool):
+            raise ValueError("data.misalign_cross_view must be true or false")
+        if data["misalign_cross_view"] and model["name"] not in CROSS_VIEW_MODELS:
+            raise ValueError(f"data.misalign_cross_view needs a cross-view model "
+                             f"{CROSS_VIEW_MODELS}, got {model['name']!r}")
     if not str(config["data"]["processed_dir"]):
         raise ValueError("data.processed_dir must not be empty")
     if not str(config["runtime"]["out_dir"]):

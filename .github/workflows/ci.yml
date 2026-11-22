@@ -62,6 +62,39 @@ jobs:
             --run-name ci_b7 --seed 42 --skip-test
           test -f runs/ci/ci_b6/metrics.json
           test -f runs/ci/ci_b7/metrics.json
+          # Week 5 (M5): missing-edge protocol and the gene-correspondence control
+          # must run end to end, and a zero-fraction run must stay unperturbed.
+          python -m cofi_gene.train --config configs/b3.yaml \
+            --dataset data/processed/ci_synthetic --out-dir runs/ci --epochs 2 \
+            --run-name ci_b3_drop30 --seed 42 --edge-drop-fraction 0.3 --skip-test
+          python -m cofi_gene.train --config configs/b5.yaml \
+            --dataset data/processed/ci_synthetic --out-dir runs/ci --epochs 2 \
+            --run-name ci_b5_misalign --seed 42 --misalign-cross-view --skip-test
+          python -m cofi_gene.train --config configs/b4.yaml \
+            --dataset data/processed/ci_synthetic --out-dir runs/ci --epochs 2 \
+            --run-name ci_b4_zero --seed 42 --edge-drop-fraction 0.0 --skip-test
+          python scripts/run_robustness.py --dataset data/processed/ci_synthetic \
+            --models b1 --ratios 0 0.5 --epochs 1 --out-dir runs/ci_m5 \
+            --summary-name ci_m5
+          test -f runs/ci_m5/ci_m5.json
+          test -f runs/ci_m5/ci_m5.md
+          python - <<'PY'
+          import json
+          drop = json.load(open("runs/ci/ci_b3_drop30/metrics.json", encoding="utf-8"))
+          assert drop["perturbation"]["edge_drop_fraction"] == 0.3
+          assert drop["perturbation"]["channels"]["A"]["num_encode_edges_removed"] > 0
+          assert drop["test"] is None, "smoke run must not score the test split"
+          misaligned = json.load(open("runs/ci/ci_b5_misalign/metrics.json",
+                                      encoding="utf-8"))
+          assert misaligned["perturbation"]["misalign_cross_view"] is True
+          assert misaligned["perturbation"]["cross_view"]["channel"] == "B"
+          assert len(misaligned["perturbation"]["cross_view"]["permutation_sha256"]) == 16
+          zero = json.load(open("runs/ci/ci_b4_zero/metrics.json", encoding="utf-8"))
+          assert "perturbation" not in zero, "0.0 must be an unperturbed run"
+          sweep = json.load(open("runs/ci_m5/ci_m5.json", encoding="utf-8"))
+          assert set(sweep["table"]["average_precision"]["A"]["b1"]) == {"0.00", "0.50"}
+          print("Week 5 robustness smoke OK")
+          PY
           python - <<'PY'
           import json
           for name in ("ci_b6", "ci_b7"):
