@@ -126,7 +126,12 @@ def test_combined_only_score_row_never_becomes_an_edge(tmp_path):
     config = PipelineConfig(dataset_name="trap", string_links=str(links),
                             string_info=str(info), gene_text=str(gene_text),
                             gene_order=str(order), n_components=4,
-                            train_fraction=0.6, val_fraction=0.2)
+                            train_fraction=0.6, val_fraction=0.2,
+                            # M5.1: the six active genes leave only 7 non-edges, so the
+                            # historic 1:1 ratio is infeasible once train/val/test are
+                            # forced to be mutually exclusive. This test only checks the
+                            # combined-score trap, so a lower ratio keeps it focused.
+                            negatives_ratio=0.5)
     dataset, _ = build_dataset(config)
     index = {gene: position for position, gene in enumerate(dataset.gene_ids)}
     assert {"G3", "G5"}.issubset(index), "both trap endpoints must be active genes"

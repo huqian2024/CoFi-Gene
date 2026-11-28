@@ -39,17 +39,25 @@ from dataclasses import replace
 import numpy as np
 
 from .dataset import ChannelSplit, CoFiDataset
-from .graph_build import index_array_to_pairs, undirected_pair_keys
+from .graph_build import (index_array_to_pairs, subset_edge_arrays, undirected_pair_keys)
+from .protocols import apply_visibility_protocol
 from .splits import simulate_missing_edges
 
 __all__ = [
     "channel_seed",
     "thin_channel",
+    "remove_training_edges",
+    "apply_edge_removal",
     "mask_cross_view_positives",
     "cross_view_permutation",
     "permutation_fingerprint",
     "apply_data_perturbations",
+    "EDGE_REMOVAL_MODES",
 ]
+
+#: ``adjacency`` drops only encoder edges (M5 Mode 1); ``supervision_aware`` also
+#: drops the matching training positives (M5.1 Mode 2).
+EDGE_REMOVAL_MODES = ("adjacency", "supervision_aware")
 
 
 def channel_seed(seed: int, index: int) -> int:
@@ -124,47 +132,141 @@ def thin_channel(channel: ChannelSplit, fraction: float, seed: int,
     return replace(channel, encode_edges=edges, encode_weights=weights), stats
 
 
-def mask_cross_view_positives(dataset: CoFiDataset) -> tuple[CoFiDataset, dict]:
-    """Remove held-out positives of one view from the other view entirely.
+def remove_training_edges(channel: ChannelSplit, fraction: float, seed: int,
+                          num_nodes: int, supervision: bool = True
+                          ) -> tuple[ChannelSplit, dict]:
+    """Remove encoder edges and, optionally, the matching training positives.
 
-    For every channel ``c`` the banned set is the union of the other channels'
-    held-out (val + test) positives. Those pairs are removed from ``c``'s
-    encoding graph **and** from ``c``'s training positives, so a pair hidden for
-    evaluation is not re-taught to the shared representation through the other
-    view's supervision. Negatives, val/test splits and the node set never change.
+    ``supervision=True`` implements M5.1 Mode 2 (*supervision-aware* removal): the
+    experiment claims "the training relation is unknown", so the removed pairs
+    must also disappear from the training positives that supervise the edge head.
+    ``supervision=False`` is the historic M5 Mode 1 (adjacency dropout), which
+    keeps the supervision and only shrinks what the encoder can read.
+
+    Selection is the same nested draw as :func:`thin_channel` (seed depends on
+    ``(seed, channel)`` only), so 10% ⊂ 30% ⊂ 50% and every model of one
+    comparison sees the identical removed subset. val/test positives, the
+    negative sample and the node set are never touched; a removed pair cannot
+    reappear as a negative because it was a training positive.
     """
-    channels = dataset.channel_names
-    if len(channels) < 2:
-        raise ValueError("cross-view masking needs at least two channels")
-    held_out = {name: (dataset.channel(name).pairs("val")
-                       | dataset.channel(name).pairs("test"))
-                for name in channels}
-    stats: dict = {"channels": {}}
+    fraction = float(fraction)
+    if not 0.0 <= fraction < 1.0:
+        raise ValueError("fraction must be in [0, 1)")
+    encode_pairs = index_array_to_pairs(channel.encode_edges)
+    kept, removed = simulate_missing_edges(encode_pairs, fraction, num_nodes, seed=int(seed))
+    encode_edges, encode_weights = subset_edge_arrays(channel.encode_edges,
+                                                      channel.encode_weights, kept)
+    stats = {
+        "mode": "supervision_aware" if supervision else "adjacency",
+        "fraction": fraction,
+        "seed": int(seed),
+        "num_encode_edges_before": len(set(encode_pairs)),
+        "num_encode_edges_after": len(set(kept)),
+        "num_encode_edges_removed": len(removed),
+    }
+    updated = replace(channel, encode_edges=encode_edges, encode_weights=encode_weights)
+    if not supervision or not removed:
+        stats.update({"supervision_changed": False,
+                      "num_train_positives_before": len(channel.pairs("train")),
+                      "num_train_positives_after": len(channel.pairs("train")),
+                      "num_train_positives_removed": 0})
+        return updated, stats
+
+    banned = set(removed)
+    train_pairs = index_array_to_pairs(channel.train)
+    keep_train = tuple(pair for pair in train_pairs if pair not in banned)
+    train, train_weights = subset_edge_arrays(channel.train, channel.train_weights, keep_train)
+    stats.update({
+        "supervision_changed": len(keep_train) != len(train_pairs),
+        "num_train_positives_before": len(set(train_pairs)),
+        "num_train_positives_after": len(set(keep_train)),
+        "num_train_positives_removed": len(set(train_pairs)) - len(set(keep_train)),
+    })
+    return replace(updated, train=train, train_weights=train_weights), stats
+
+
+def apply_edge_removal(dataset: CoFiDataset, mode: str, fraction: float, seed: int,
+                       channels=None) -> tuple[CoFiDataset, dict]:
+    """Apply one edge-removal mode to the selected channels of ``dataset``.
+
+    ``channels=None`` means "every channel"; a subset (e.g. ``["A"]``) makes a
+    single-source damage experiment distinguishable from "both views damaged",
+    and the returned ``stats`` records exactly which channels were touched.
+    """
+    if mode not in EDGE_REMOVAL_MODES:
+        raise ValueError(f"mode must be one of {EDGE_REMOVAL_MODES}, got {mode!r}")
+    fraction = float(fraction)
+    if not 0.0 <= fraction < 1.0:
+        raise ValueError("fraction must be in [0, 1)")
+    available = dataset.channel_names
+    selected = tuple(available if channels is None else channels)
+    unknown = [name for name in selected if name not in available]
+    if unknown:
+        raise ValueError(f"unknown channel(s) {unknown}; available: {available}")
+    if not selected:
+        raise ValueError("at least one channel must be selected")
+    stats: dict = {"mode": mode, "fraction": fraction, "seed": int(seed),
+                   "channels_selected": list(selected), "channels": {}}
+    if fraction == 0.0:
+        for name in available:
+            part = dataset.channel(name)
+            stats["channels"][name] = _unchanged_channel_stats(part, mode, seed)
+        stats["changed"] = False
+        return dataset, stats
+
+    supervision = mode == "supervision_aware"
     updated: dict[str, ChannelSplit] = {}
-    for name in channels:
+    for index, name in enumerate(available):
         part = dataset.channel(name)
-        banned = frozenset().union(*(held_out[other] for other in channels
-                                     if other != name))
-        kept_encode = tuple(pair for pair in index_array_to_pairs(part.encode_edges)
-                            if pair not in banned)
-        kept_train = tuple(pair for pair in index_array_to_pairs(part.train)
-                           if pair not in banned)
-        encode_edges, encode_weights = _subset_arrays(part.encode_edges,
-                                                      part.encode_weights, kept_encode)
-        train, train_weights = _subset_arrays(part.train, part.train_weights, kept_train)
-        updated[name] = replace(part, train=train, train_weights=train_weights,
-                                encode_edges=encode_edges, encode_weights=encode_weights)
-        encode_before = len(set(index_array_to_pairs(part.encode_edges)))
-        train_before = len(set(index_array_to_pairs(part.train)))
-        stats["channels"][name] = {
-            "num_encode_edges_before": encode_before,
-            "num_encode_edges_after": len(kept_encode),
-            "num_encode_edges_removed": encode_before - len(kept_encode),
-            "num_train_positives_before": train_before,
-            "num_train_positives_after": len(kept_train),
-            "num_train_positives_removed": train_before - len(kept_train),
-        }
-    return replace(dataset, channels=updated), stats
+        if name in selected:
+            part, channel_stats = remove_training_edges(part, fraction,
+                                                        channel_seed(seed, index),
+                                                        dataset.num_nodes,
+                                                        supervision=supervision)
+        else:
+            channel_stats = _unchanged_channel_stats(part, mode, seed)
+            channel_stats["untouched"] = True
+        updated[name] = part
+        stats["channels"][name] = channel_stats
+    result = replace(dataset, channels=updated)
+    result.validate()
+    stats["changed"] = True
+    return result, stats
+
+
+def _unchanged_channel_stats(channel: ChannelSplit, mode: str, seed: int) -> dict:
+    """Per-channel block for a channel that was not perturbed (audit transparency)."""
+    encode_count = len(undirected_pair_keys(channel.encode_edges))
+    train_count = len(channel.pairs("train"))
+    return {
+        "mode": mode, "fraction": 0.0, "seed": int(seed),
+        "num_encode_edges_before": encode_count,
+        "num_encode_edges_after": encode_count,
+        "num_encode_edges_removed": 0,
+        "num_train_positives_before": train_count,
+        "num_train_positives_after": train_count,
+        "num_train_positives_removed": 0,
+        "supervision_changed": False,
+    }
+
+
+def mask_cross_view_positives(dataset: CoFiDataset) -> tuple[CoFiDataset, dict]:
+    """Hide each view's held-out pairs in the other view (M5 wrapper).
+
+    Kept as the historic entry point used by the Week 5 report. It now delegates
+    to :func:`cofi_gene.protocols.apply_visibility_protocol` with
+    ``dual_view_strict_holdout``, so the pipeline flag, the trainer perturbation
+    and the experiment protocols share one implementation (M5.1 finding B-04).
+    """
+    if len(dataset.channel_names) < 2:
+        raise ValueError("cross-view masking needs at least two channels")
+    masked, stats = apply_visibility_protocol(dataset, "dual_view_strict_holdout")
+    return masked, {
+        "protocol": stats["protocol"],
+        "channels": stats.get("channels", {}),
+        "visibility_before": stats.get("visibility_before"),
+        "visibility_after": stats.get("visibility_after"),
+    }
 
 
 
@@ -201,50 +303,63 @@ def permutation_fingerprint(permutation) -> str:
 
 
 def apply_data_perturbations(dataset: CoFiDataset, config: dict) -> tuple[CoFiDataset, dict]:
-    """Apply ``data.edge_drop_fraction`` / ``data.mask_other_view`` from a config.
+    """Apply the visibility protocol and the configured edge-removal mode.
 
-    Order is fixed: cross-view masking first, then edge thinning on the masked
-    graph. The returned ``stats`` block is what the trainer writes into
-    ``metrics.json``; the on-disk ``dataset.npz`` is never modified, so the
-    recorded dataset hash keeps pointing at the unperturbed build.
+    Order is fixed and recorded: **visibility protocol first**, then edge removal
+    on the resulting graph. Both steps are pure functions of
+    ``(dataset, protocol/mode, fraction, seed)``, so all models of one comparison
+    see byte-identical graphs.
+
+    Config keys (all optional; absent keys reproduce the historic behaviour):
+
+    ``data.visibility_protocol``   ``cross_view_transfer`` (default) | ``dual_view_strict_holdout``
+    ``data.mask_other_view``       legacy alias for the strict protocol
+    ``data.edge_removal_mode``     ``adjacency`` (default) | ``supervision_aware``
+    ``data.edge_drop_fraction``    fraction of encoder edges to remove
+    ``data.drop_channels``         subset of channels to damage (default: all)
     """
     data_cfg = dict(config.get("data") or {})
     runtime_cfg = dict(config.get("runtime") or {})
-    fraction = float(data_cfg.get("edge_drop_fraction") or 0.0)
-    mask = bool(data_cfg.get("mask_other_view", False))
     seed = int(runtime_cfg.get("seed", 0))
+    legacy_mask = data_cfg.get("mask_other_view")
+    protocol = data_cfg.get("visibility_protocol")
+    if protocol is None:
+        protocol = ("dual_view_strict_holdout" if legacy_mask
+                    else "cross_view_transfer")
+    elif legacy_mask is not None and bool(legacy_mask) != (
+            protocol == "dual_view_strict_holdout"):
+        raise ValueError("data.mask_other_view conflicts with data.visibility_protocol; "
+                         "set only visibility_protocol for new runs")
+    mode = data_cfg.get("edge_removal_mode") or "adjacency"
+    fraction = float(data_cfg.get("edge_drop_fraction") or 0.0)
     if not 0.0 <= fraction < 1.0:
         raise ValueError("data.edge_drop_fraction must be in [0, 1)")
+    drop_channels = data_cfg.get("drop_channels")
+
+    current, protocol_stats = apply_visibility_protocol(dataset, protocol)
+    current, removal_stats = apply_edge_removal(current, mode, fraction, seed,
+                                                drop_channels)
 
     channels = dataset.channel_names
     before = {name: len(undirected_pair_keys(dataset.channel(name).encode_edges))
               for name in channels}
-    train_before = {name: len(undirected_pair_keys(dataset.channel(name).train))
-                    for name in channels}
-
-    current = dataset
-    mask_stats: dict = {}
-    if mask:
-        current, mask_stats = mask_cross_view_positives(current)
-
-    drop_stats: dict = {}
-    if fraction > 0.0:
-        thinned: dict[str, ChannelSplit] = {}
-        for index, name in enumerate(channels):
-            part, stats = thin_channel(current.channel(name), fraction,
-                                       channel_seed(seed, index), current.num_nodes)
-            thinned[name] = part
-            drop_stats[name] = stats
-        current = replace(current, channels=thinned)
-
     after = {name: len(undirected_pair_keys(current.channel(name).encode_edges))
              for name in channels}
-    train_after = {name: len(undirected_pair_keys(current.channel(name).train))
-                   for name in channels}
+    train_before = {name: len(dataset.channel(name).pairs("train")) for name in channels}
+    train_after = {name: len(current.channel(name).pairs("train")) for name in channels}
+    changed = bool(protocol_stats["changed"] or removal_stats["changed"])
     stats = {
         "edge_drop_fraction": fraction,
-        "mask_other_view": mask,
+        # Legacy field kept so the Week 5 report/readers keep working; it is now
+        # derived from the protocol instead of being an independent flag.
+        "mask_other_view": protocol == "dual_view_strict_holdout",
+        "visibility_protocol": protocol,
+        "edge_removal_mode": mode,
+        "drop_channels": list(removal_stats["channels_selected"]),
         "seed": seed,
+        "changed": changed,
+        "visibility": protocol_stats,
+        "edge_removal": removal_stats,
         "channels": {
             name: {
                 "num_encode_edges_before": before[name],
@@ -252,9 +367,10 @@ def apply_data_perturbations(dataset: CoFiDataset, config: dict) -> tuple[CoFiDa
                 "num_encode_edges_removed": before[name] - after[name],
                 "num_train_positives_before": train_before[name],
                 "num_train_positives_after": train_after[name],
-                "cross_view_mask": (mask_stats.get("channels", {}).get(name)
-                                    if mask else None),
-                "edge_drop": drop_stats.get(name),
+                "num_train_positives_removed": train_before[name] - train_after[name],
+                "cross_view_mask": protocol_stats.get("channels", {}).get(name),
+                "edge_drop": (removal_stats["channels"].get(name)
+                              if removal_stats["changed"] else None),
             }
             for name in channels
         },

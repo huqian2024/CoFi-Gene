@@ -44,5 +44,11 @@ target_train_fraction: 0.7
 target_val_fraction: 0.15
 negatives_ratio: 1.0
 negative_seed: 42
+# M5.1 负采样协议（历史口径为 uniform_random，保留以保持可比性）：
+#   uniform_random | degree_matched | two_hop
+# 修复后的数据请另存为新目录（例如 real_v1_1），不要覆盖 real_v1。
+negatives_strategy: uniform_random
+negatives_fallback: uniform          # uniform | relaxed_degree | error
+negative_degree_buckets: 10
 # D-014 待确认：是否启用"双视图均遮蔽"口径
 mask_other_view: false

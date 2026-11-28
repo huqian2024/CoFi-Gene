@@ -22,7 +22,8 @@ from .features import fit_feature_reducer, load_feature_matrix, load_gene_order
 from .gene_ids import align_string_to_symbols, normalize_symbol, parse_string_protein_info
 from .graph_build import (build_channel_graph, canonicalize_pairs, index_array_to_pairs,
                           overlap_stats, pairs_to_index_array)
-from .negative_sampling import negative_pair_count, sample_negative_pairs
+from .negative_sampling import (NEGATIVE_STRATEGIES, negative_pair_count,
+                                sample_split_negatives)
 from .splits import (THREE_WAY, remove_edge_pairs, split_edges, split_perturbation_targets,
                      split_summary)
 from .string_io import iter_string_channel_edges, open_text
@@ -58,9 +59,29 @@ class PipelineConfig:
     target_val_fraction: float = 0.15
     negatives_ratio: float = 1.0
     negative_seed: int = 42
+    #: M5.1: ``uniform_random`` / ``degree_matched`` / ``two_hop``. The default is
+    #: the historic protocol, kept under an explicit name so rows stay comparable.
+    negatives_strategy: str = "uniform_random"
+    #: What a hard strategy does when it cannot fill a slot (never silent).
+    negatives_fallback: str = "uniform"
+    #: Quantile buckets for ``degree_matched`` on the visible training graph.
+    negative_degree_buckets: int = 10
     mask_other_view: bool = False
     max_link_rows: int | None = None
     max_genes: int | None = None
+
+    def __post_init__(self) -> None:
+        """Fail fast on knobs that would make the build non-reproducible."""
+        if self.negatives_strategy not in NEGATIVE_STRATEGIES:
+            raise ValueError(f"negatives_strategy must be one of {NEGATIVE_STRATEGIES}, "
+                             f"got {self.negatives_strategy!r}")
+        if self.negatives_fallback not in ("uniform", "relaxed_degree", "error"):
+            raise ValueError("negatives_fallback must be 'uniform', 'relaxed_degree' "
+                             f"or 'error', got {self.negatives_fallback!r}")
+        if self.negatives_ratio <= 0:
+            raise ValueError("negatives_ratio must be > 0")
+        if int(self.negative_degree_buckets) < 1:
+            raise ValueError("negative_degree_buckets must be >= 1")
 
 
 @dataclass
@@ -93,6 +114,10 @@ def split_decisions(config: PipelineConfig) -> dict:
         "target_val_fraction": config.target_val_fraction,
         "negative_seed": config.negative_seed,
         "negatives_ratio": config.negatives_ratio,
+        "negatives_strategy": config.negatives_strategy,
+        "negatives_fallback": config.negatives_fallback,
+        "negative_degree_buckets": config.negative_degree_buckets,
+        "negative_split_exclusion": "sequential (train -> val -> test), mutually exclusive",
         "mask_other_view": config.mask_other_view,
     }
 
@@ -157,7 +182,15 @@ def _weights_for(pairs, weight_of: dict[tuple[int, int], float]) -> np.ndarray:
 
 def _build_channel_splits(graphs: dict, edge_splits: dict, config: PipelineConfig,
                           num_nodes: int) -> dict[str, ChannelSplit]:
-    """Combine per-channel positive splits, encoder graphs and negatives."""
+    """Combine per-channel positive splits, encoder graphs and negatives.
+
+    M5.1 (fix B-01): negatives are drawn with
+    :func:`cofi_gene.negative_sampling.sample_split_negatives`, which makes the
+    three splits draw from one pool, so ``train``/``val``/``test`` negatives are
+    mutually disjoint and still exclude every known positive of the channel.
+    ``split.train`` is the reference graph for the degree-matched / two-hop
+    strategies: held-out edges must never drive the degree distribution.
+    """
     held_out = {name: set(split.val) | set(split.test) for name, split in edge_splits.items()}
     channels: dict[str, ChannelSplit] = {}
     for channel_index, (name, graph) in enumerate(sorted(graphs.items())):
@@ -169,12 +202,17 @@ def _build_channel_splits(graphs: dict, edge_splits: dict, config: PipelineConfi
             if other:
                 encode_pairs = remove_edge_pairs(encode_pairs, held_out[other[0]], num_nodes)
         known = set(split.train) | set(split.val) | set(split.test)
-        negatives = {}
-        for split_index, split_name in enumerate(("train", "val", "test")):
-            positives = getattr(split, split_name)
-            count = negative_pair_count(len(positives), config.negatives_ratio)
-            seed = config.negative_seed + 1000 * channel_index + split_index
-            negatives[split_name] = sample_negative_pairs(num_nodes, count, known, seed=seed)
+        counts = {split_name: negative_pair_count(len(getattr(split, split_name)),
+                                                  config.negatives_ratio)
+                  for split_name in ("train", "val", "test")}
+        partition = sample_split_negatives(
+            num_nodes, counts, known,
+            seed=config.negative_seed + 1000 * channel_index,
+            strategy=config.negatives_strategy,
+            reference_edges=pairs_to_index_array(split.train, num_nodes),
+            degree_buckets=config.negative_degree_buckets,
+            fallback=config.negatives_fallback)
+        negatives = partition.negatives
         channels[name] = ChannelSplit(
             train=pairs_to_index_array(split.train, num_nodes),
             val=pairs_to_index_array(split.val, num_nodes),
@@ -194,7 +232,8 @@ def _build_channel_splits(graphs: dict, edge_splits: dict, config: PipelineConfi
                    "num_neg_train": len(negatives["train"]),
                    "num_neg_val": len(negatives["val"]),
                    "num_neg_test": len(negatives["test"]),
-                   "mask_other_view_applied": bool(config.mask_other_view)})
+                   "mask_other_view_applied": bool(config.mask_other_view),
+                   "negative_sampling": partition.stats})
     return channels
 
 
@@ -343,6 +382,8 @@ def build_dataset(config: PipelineConfig, de_loader=None) -> tuple[CoFiDataset, 
         "channel_columns": {name: column for name, (column, _) in columns.items()},
         "feature_reducer": "pca_svd_sign_fixed",
         "split": split_decisions(config),
+        "negative_sampling": {name: channels[name].stats["negative_sampling"]
+                              for name in sorted(channels)},
         "provenance": "built by cofi_gene.pipeline.build_dataset",
     }
     dataset = CoFiDataset(gene_ids=gene_ids, X=X, channels=channels,

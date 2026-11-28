@@ -19,6 +19,7 @@ __all__ = [
     "index_array_to_pairs",
     "graph_stats",
     "undirected_pair_keys",
+    "subset_edge_arrays",
     "overlap_stats",
     "normalize_edge_weights",
     "WEIGHT_MODES",
@@ -179,6 +180,33 @@ def graph_stats(edge_index, num_nodes: int, weights=None) -> dict:
         stats.update({"weight_min": float(array.min()), "weight_max": float(array.max()),
                       "weight_mean": float(array.mean())})
     return stats
+
+
+def subset_edge_arrays(edge_index, weights, pairs) -> tuple[np.ndarray, np.ndarray]:
+    """Keep only the canonical ``pairs`` of one edge array, in sorted order.
+
+    Shared by the visibility protocols and the M5 edge-removal modes so both
+    mutate an encoder graph with exactly the same rule (weights stay attached to
+    their own edge; a requested pair that is not in the graph is an error, not a
+    silent no-op).
+    """
+    wanted = tuple(sorted({(int(min(u, v)), int(max(u, v))) for u, v in pairs}))
+    source = index_array_to_pairs(edge_index)
+    array = np.zeros((0,), dtype=np.float32) if weights is None else np.asarray(
+        weights, dtype=np.float32).reshape(-1)
+    if array.size and array.size != len(source):
+        raise ValueError(f"{array.size} weights for {len(source)} edges")
+    lookup = {pair: (float(array[index]) if array.size else 1.0)
+              for index, pair in enumerate(source)}
+    missing = [pair for pair in wanted if pair not in lookup]
+    if missing:
+        raise ValueError(f"{len(missing)} requested edges are not in the graph, "
+                         f"e.g. {missing[:3]}")
+    if not wanted:
+        return (np.zeros((2, 0), dtype=np.int64), np.zeros((0,), dtype=np.float32))
+    edges = np.asarray(wanted, dtype=np.int64).T.copy()
+    values = np.asarray([lookup[pair] for pair in wanted], dtype=np.float32)
+    return edges, values
 
 
 def overlap_stats(edge_index_a, edge_index_b) -> dict:

@@ -52,6 +52,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--split-seed", type=int)
     parser.add_argument("--negatives-ratio", type=float)
     parser.add_argument("--negative-seed", type=int)
+    parser.add_argument("--negatives-strategy",
+                        choices=["uniform_random", "degree_matched", "two_hop"],
+                        help="M5.1 negative protocol (default uniform_random)")
+    parser.add_argument("--negatives-fallback",
+                        choices=["uniform", "relaxed_degree", "error"],
+                        help="what a hard strategy does when its pool is exhausted")
+    parser.add_argument("--negative-degree-buckets", type=int,
+                        help="quantile buckets for degree_matched (default 10)")
     parser.add_argument("--mask-other-view", action="store_true", default=None)
     parser.add_argument("--max-link-rows", type=int)
     parser.add_argument("--max-genes", type=int)
@@ -83,6 +91,9 @@ def _config_from_args(args: argparse.Namespace) -> PipelineConfig:
         "min_abs_log2fc": "min_abs_log2fc", "train_fraction": "train_fraction",
         "val_fraction": "val_fraction", "split_seed": "split_seed",
         "negatives_ratio": "negatives_ratio", "negative_seed": "negative_seed",
+        "negatives_strategy": "negatives_strategy",
+        "negatives_fallback": "negatives_fallback",
+        "negative_degree_buckets": "negative_degree_buckets",
         "mask_other_view": "mask_other_view", "max_link_rows": "max_link_rows",
         "max_genes": "max_genes",
     }

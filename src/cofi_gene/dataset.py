@@ -47,6 +47,39 @@ def _empty_weights() -> np.ndarray:
     return np.zeros((0,), dtype=np.float32)
 
 
+def edge_pairs_checked(label: str, edges, num_nodes: int) -> frozenset:
+    """Canonical pair set of one edge array, rejecting malformed content.
+
+    Raises on: wrong shape, non-integer dtype, out-of-range endpoint, self-loop
+    and duplicates (a reversed duplicate ``(u, v)``/``(v, u)`` collapses into one
+    canonical pair and is therefore caught here too). ``label`` is used verbatim
+    in the error message so the failing array is unambiguous.
+    """
+    array = np.asarray(edges)
+    if array.size == 0:
+        return frozenset()
+    if array.ndim != 2 or array.shape[0] != 2:
+        raise ValueError(f"{label}: edge_index must be [2, E], got {array.shape}")
+    if not np.issubdtype(array.dtype, np.integer):
+        raise ValueError(f"{label}: edge_index must be an integer array, got {array.dtype}")
+    if int(array.min()) < 0 or int(array.max()) >= int(num_nodes):
+        raise ValueError(f"{label}: edge index out of range [0, {int(num_nodes)})")
+    if np.any(array[0] == array[1]):
+        row = int(np.flatnonzero(array[0] == array[1])[0])
+        raise ValueError(f"{label}: self-loop at edge {row} "
+                         f"({int(array[0, row])}, {int(array[1, row])})")
+    pairs = undirected_pair_keys(array)
+    if len(pairs) != int(array.shape[1]):
+        raise ValueError(f"{label}: {int(array.shape[1]) - len(pairs)} duplicate/reversed "
+                         "edge(s); every undirected pair must appear once")
+    return pairs
+
+
+def _check(check_id: str, title: str, status: str, detail: str) -> dict:
+    """One audit row: stable id, human title, PASS/FAIL and the measured detail."""
+    return {"id": check_id, "title": title, "status": status, "detail": detail}
+
+
 @dataclass
 class ChannelSplit:
     """One evidence channel: held-out positives, negatives, and encoder graph."""
@@ -126,53 +159,166 @@ class CoFiDataset:
             raise KeyError(f"unknown channel {name!r}; available: {self.channel_names}") from exc
 
     def validate(self) -> dict:
-        """Assert the leakage invariants and return a small report.
+        """Assert every leakage invariant and return a small report.
 
-        Raises ``ValueError`` with a specific message on the first violation, so a
+        Raises ``ValueError`` with the *detail* of the first failing check, so a
         broken build fails loudly instead of silently training on held-out edges.
+        The checks live in :meth:`inspect`, which never raises and is what
+        ``cofi_gene.audit`` turns into a PASS/FAIL JSON report.
         """
+        _, _, failures = self.inspect()
+        if failures:
+            raise ValueError(failures[0]["detail"])
+        return self.report()
+
+    def inspect(self) -> tuple[list[dict], dict, list[dict]]:
+        """Run all checks; return ``(checks, report, failures)`` without raising."""
+        checks = self._structure_checks() + self._supervision_checks()
+        failures = [check for check in checks if check["status"] == "FAIL"]
+        return checks, self.report(), failures
+
+    def audit_checks(self) -> list[dict]:
+        """Public accessor used by ``cofi_gene.audit`` and the CLI."""
+        return self.inspect()[0]
+
+    def _structure_checks(self) -> list[dict]:
+        checks: list[dict] = []
         num_nodes = self.num_nodes
-        report: dict = {"num_nodes": num_nodes, "num_features": self.num_features,
+        finite = bool(np.all(np.isfinite(self.X)))
+        checks.append(_check(
+            "C01-node-features", "node set and shared feature matrix",
+            "PASS" if finite else "FAIL",
+            f"{num_nodes} genes, {self.num_features} features, all finite" if finite
+            else "X contains non-finite values"))
+        for name, channel in self.channels.items():
+            pairs: dict[str, frozenset] = {}
+            for attribute in ("train", "val", "test", "encode_edges"):
+                label = f"channel {name} {attribute}"
+                try:
+                    pairs[attribute] = edge_pairs_checked(label, getattr(channel, attribute),
+                                                          num_nodes)
+                    checks.append(_check(f"C02[{name}].{attribute}", f"{label} well-formed",
+                                         "PASS", f"{len(pairs[attribute])} undirected edges"))
+                except ValueError as exc:
+                    pairs[attribute] = frozenset()
+                    checks.append(_check(f"C02[{name}].{attribute}", f"{label} well-formed",
+                                         "FAIL", str(exc)))
+            train, val, test = pairs["train"], pairs["val"], pairs["test"]
+            encode = pairs["encode_edges"]
+            overlaps = {"train&val": len(train & val), "train&test": len(train & test),
+                        "val&test": len(val & test)}
+            bad = any(overlaps.values())
+            checks.append(_check(
+                f"C03[{name}].positive-disjoint", f"channel {name} positive splits disjoint",
+                "PASS" if not bad else "FAIL",
+                "train/val/test positives are disjoint" if not bad
+                else f"positive splits overlap: {overlaps}"))
+            leaked = encode & (val | test)
+            checks.append(_check(
+                f"C04[{name}].heldout-absent", f"channel {name} encoder excludes held-out",
+                "PASS" if not leaked else "FAIL",
+                f"{len(encode)} encoder edges, none of the {len(val) + len(test)} held-out "
+                "positives present" if not leaked else
+                f"{len(leaked)} held-out positive edge(s) are present in the encoder graph, "
+                f"e.g. {sorted(leaked)[:3]}"))
+            extra = encode - train
+            checks.append(_check(
+                f"C05[{name}].encode-subset", f"channel {name} encoder ⊆ training positives",
+                "PASS" if not extra else "FAIL",
+                "encoder graph is a subset of the training positives" if not extra else
+                f"{len(extra)} encoder edge(s) are not training positives, "
+                f"e.g. {sorted(extra)[:3]}"))
+            for attribute, weight_name in (("train", "train_weights"),
+                                           ("val", "val_weights"),
+                                           ("test", "test_weights"),
+                                           ("encode_edges", "encode_weights")):
+                weights = np.asarray(getattr(channel, weight_name))
+                expected = len(pairs[attribute])
+                ok = weights.size == expected
+                checks.append(_check(
+                    f"C06[{name}].{weight_name}", f"channel {name} {weight_name} length",
+                    "PASS" if ok else "FAIL",
+                    f"{expected} weights" if ok
+                    else f"{weight_name} has {weights.size} values for {expected} edges"))
+        return checks
+
+    def _supervision_checks(self) -> list[dict]:
+        """Negatives vs positives, negative cross-split disjointness, target groups."""
+        checks: list[dict] = []
+        num_nodes = self.num_nodes
+        for name, channel in self.channels.items():
+            known = channel.known_positives()
+            negative_pairs: dict[str, frozenset] = {}
+            for split in THREE_WAY:
+                label = f"channel {name} neg_{split}"
+                try:
+                    pairs = edge_pairs_checked(label, getattr(channel, f"neg_{split}"),
+                                               num_nodes)
+                    negative_pairs[split] = pairs
+                    checks.append(_check(f"C07[{name}].neg_{split}", f"{label} well-formed",
+                                         "PASS", f"{len(pairs)} sampled non-edges"))
+                except ValueError as exc:
+                    negative_pairs[split] = frozenset()
+                    message = str(exc)
+                    if "duplicate" in message:
+                        message = (f"channel {name} neg_{split}: duplicate negatives "
+                                   f"({message.split(': ', 1)[-1]})")
+                    checks.append(_check(f"C07[{name}].neg_{split}", f"{label} well-formed",
+                                         "FAIL", message))
+                conflicts = negative_pairs[split] & known
+                checks.append(_check(
+                    f"C08[{name}].neg_{split}-positive", f"{label} vs known positives",
+                    "PASS" if not conflicts else "FAIL",
+                    "no sampled negative is a known positive" if not conflicts else
+                    f"{len(conflicts)} negative(s) are known positives, "
+                    f"e.g. {sorted(conflicts)[:3]}"))
+            cross = {"train&val": len(negative_pairs["train"] & negative_pairs["val"]),
+                     "train&test": len(negative_pairs["train"] & negative_pairs["test"]),
+                     "val&test": len(negative_pairs["val"] & negative_pairs["test"])}
+            any_cross = any(cross.values())
+            checks.append(_check(
+                f"C09[{name}].neg-disjoint", f"channel {name} negative splits disjoint",
+                "PASS" if not any_cross else "FAIL",
+                "train/val/test negatives are pairwise disjoint (M5.1 fix B-01)"
+                if not any_cross else f"negative splits overlap: {cross}"))
+        partitions = [set(self.target_splits.get(s, ())) for s in THREE_WAY]
+        overlap = any(partitions[i] & partitions[j]
+                      for i in range(len(partitions)) for j in range(i + 1, len(partitions)))
+        checks.append(_check(
+            "C10-target-splits", "downstream target split grouping",
+            "PASS" if not overlap else "FAIL",
+            f"{sum(len(part) for part in partitions)} targets in disjoint groups"
+            if not overlap else "downstream target splits overlap (ungrouped leakage)"))
+        return checks
+
+    def report(self) -> dict:
+        """Counts per channel/split (JSON-ready), independent of the checks."""
+        report: dict = {"num_nodes": self.num_nodes, "num_features": self.num_features,
                         "channels": {}}
         for name, channel in self.channels.items():
-            for split in THREE_WAY:
-                edges = getattr(channel, split)
-                if edges.size and (edges.min() < 0 or edges.max() >= num_nodes):
-                    raise ValueError(f"channel {name} {split}: edge index out of range")
-            train, val, test = channel.pairs("train"), channel.pairs("val"), channel.pairs("test")
-            if (train & val) or (train & test) or (val & test):
-                raise ValueError(f"channel {name}: positive splits overlap")
             encode = undirected_pair_keys(channel.encode_edges)
-            leaked = encode & (val | test)
-            if leaked:
-                raise ValueError(
-                    f"channel {name}: {len(leaked)} held-out positive edge(s) are present "
-                    f"in the encoder graph, e.g. {sorted(leaked)[:3]}")
-            known = train | val | test
-            for split in THREE_WAY:
-                negatives = getattr(channel, f"neg_{split}")
-                negative_pairs = channel.negative_pairs(split)
-                if len(negative_pairs) != negatives.shape[1]:
-                    raise ValueError(f"channel {name} neg_{split}: duplicate negatives")
-                bad = negative_pairs & known
-                if bad:
-                    raise ValueError(
-                        f"channel {name} neg_{split}: {len(bad)} negative(s) are known "
-                        f"positives, e.g. {sorted(bad)[:3]}")
+            train = channel.pairs("train")
+            val = channel.pairs("val")
+            test = channel.pairs("test")
+            neg_train = channel.negative_pairs("train")
+            neg_val = channel.negative_pairs("val")
+            neg_test = channel.negative_pairs("test")
             report["channels"][name] = {
                 "num_edges_encode": len(encode),
                 "num_train": len(train), "num_val": len(val), "num_test": len(test),
-                "num_neg_train": channel.neg_train.shape[1],
-                "num_neg_val": channel.neg_val.shape[1],
-                "num_neg_test": channel.neg_test.shape[1],
+                "num_neg_train": int(channel.neg_train.shape[1]),
+                "num_neg_val": int(channel.neg_val.shape[1]),
+                "num_neg_test": int(channel.neg_test.shape[1]),
+                "negative_split_overlap": {
+                    "train&val": len(neg_train & neg_val),
+                    "train&test": len(neg_train & neg_test),
+                    "val&test": len(neg_val & neg_test),
+                },
             }
-        partitions = [set(self.target_splits.get(s, ())) for s in THREE_WAY]
-        for i in range(len(partitions)):
-            for j in range(i + 1, len(partitions)):
-                if partitions[i] & partitions[j]:
-                    raise ValueError("downstream target splits overlap (ungrouped leakage)")
-        report["num_targets"] = sum(len(part) for part in partitions)
+        report["num_targets"] = sum(len(set(self.target_splits.get(s, ())))
+                                   for s in THREE_WAY)
         return report
+
 
     def summary(self) -> dict:
         return self.validate()

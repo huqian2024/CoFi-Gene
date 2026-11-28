@@ -63,7 +63,9 @@ _ALLOWED = {
              # Optional Week 5 (M5) perturbation keys. Deliberately absent from
              # DEFAULTS so every B0-B7 config hash, run name and metrics.json
              # stays byte-identical unless an experiment explicitly opts in.
-             "edge_drop_fraction", "mask_other_view", "misalign_cross_view"},
+             "edge_drop_fraction", "mask_other_view", "misalign_cross_view",
+             # Optional M5.1 protocol keys (same rule: never in DEFAULTS).
+             "visibility_protocol", "edge_removal_mode", "drop_channels"},
     "runtime": {"seed", "device", "out_dir", "run_name", "log_every"},
 }
 
@@ -84,6 +86,12 @@ CHANNEL_SETS = {
 #: B0 has no fusion and B1/B2 encode a single view. Defined here (not imported
 #: from ``cofi_gene.models``) to avoid a circular import.
 CROSS_VIEW_MODELS = ("b3", "b4", "b5", "b6", "b7")
+
+#: M5.1 protocol names. Kept as literals here (like ``CROSS_VIEW_MODELS``) to keep
+#: ``cofi_gene.config`` free of a data-layer import; ``tests/test_m5_1_protocols.py``
+#: asserts they are identical to ``cofi_gene.protocols`` / ``cofi_gene.perturbation``.
+VISIBILITY_PROTOCOLS = ("cross_view_transfer", "dual_view_strict_holdout")
+EDGE_REMOVAL_MODES = ("adjacency", "supervision_aware")
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -196,6 +204,30 @@ def validate_config(config: dict) -> None:
         if data["misalign_cross_view"] and model["name"] not in CROSS_VIEW_MODELS:
             raise ValueError(f"data.misalign_cross_view needs a cross-view model "
                              f"{CROSS_VIEW_MODELS}, got {model['name']!r}")
+    # Optional M5.1 protocol keys: validated only when present.
+    if data.get("visibility_protocol") is not None:
+        if data["visibility_protocol"] not in VISIBILITY_PROTOCOLS:
+            raise ValueError(f"data.visibility_protocol must be one of "
+                             f"{VISIBILITY_PROTOCOLS}, got {data['visibility_protocol']!r}")
+        if "mask_other_view" in data:
+            strict = data["visibility_protocol"] == "dual_view_strict_holdout"
+            if bool(data["mask_other_view"]) != strict:
+                raise ValueError("data.mask_other_view conflicts with "
+                                 "data.visibility_protocol; use only visibility_protocol")
+    if data.get("edge_removal_mode") is not None:
+        if data["edge_removal_mode"] not in EDGE_REMOVAL_MODES:
+            raise ValueError(f"data.edge_removal_mode must be one of {EDGE_REMOVAL_MODES}, "
+                             f"got {data['edge_removal_mode']!r}")
+    if data.get("drop_channels") is not None:
+        drop = data["drop_channels"]
+        if not isinstance(drop, (list, tuple)) or not drop:
+            raise ValueError("data.drop_channels must be a non-empty list of channel names")
+        unknown = [name for name in drop if name not in ("A", "B")]
+        if unknown:
+            raise ValueError(f"data.drop_channels has unknown channel(s) {unknown}")
+        if not any(name in model["channels"] for name in drop):
+            raise ValueError(f"data.drop_channels must include a channel used by "
+                             f"{model['name']} (channels={tuple(model['channels'])})")
     if not str(config["data"]["processed_dir"]):
         raise ValueError("data.processed_dir must not be empty")
     if not str(config["runtime"]["out_dir"]):
