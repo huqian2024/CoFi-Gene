@@ -12,7 +12,10 @@
 ### 工程命令速查（不改变研究范围）
 
 - 安装：`python -m pip install -e '.[dev,data]'`；上游训练另装 `.[train]`（CPU 机器：`pip install --index-url https://download.pytorch.org/whl/cpu torch`）。
-- 测试：`python -m pytest -q`（218 个用例；缺少 torch / pyarrow 时相关用例自动 skip）。
+- 测试：`python -m pytest -q`（300 个用例；缺少 torch / pyarrow 时相关用例自动 skip）。
+- 数据审计（训练前必须 PASS）：`python scripts/audit_dataset.py --dataset data/processed/<name> --out runs/m5_1/audit.json`
+- 非神经网络基线：`python scripts/run_baselines.py --dataset data/processed/<name> --out-dir runs/m5_1/baselines`
+- M5.1 阶段矩阵：`python scripts/run_experiments.py --stage {0..5} --dataset ... --dry-run|--resume`（指南：`docs/M5_1_SERVER_TRAINING_GUIDE.md`）
 - 合成数据端到端：`python scripts/make_synthetic_dataset.py --raw data/raw/synthetic_v1 --processed data/processed/synthetic_v1`
 - 真实数据构建：填好 `configs/data.yaml` 后 `python scripts/build_dataset.py --config configs/data.yaml --out data/processed/<name>`
 - 训练：`python -m cofi_gene.train --config configs/b3.yaml --seed 42`（产物在 `runs/<run_name>/`；B4/B5 用 `configs/b4.yaml`、`configs/b5.yaml`）

@@ -1,5 +1,11 @@
 # 真实数据与 GPU 训练交接（Training Handoff）
 
+> ⚠ **已被 M5.1 指南取代（2026-11-28）**：真实数据训练请以
+> [`docs/M5_1_SERVER_TRAINING_GUIDE.md`](docs/M5_1_SERVER_TRAINING_GUIDE.md) 为准（新数据版本 `real_v1_1`、
+> 数据审计闸门、Stage 0–5 命令、结果回传清单）。本文件保留为历史交接记录，其中的数据细节仍有效，
+> 但"直接跑 B0–B7"的流程**缺少负样本互斥修复后的审计步骤**，不要照旧执行。
+
+
 > **面向**：负责真实 STRING / PIE 数据接入与 RTX 5090 训练的同学。
 > **仓库**：<https://github.com/huqian2024/CoFi-Gene> ｜ **分支**：`main`（Week 2 – Week 5 已合并，代码基线 `f1c95c1`）
 > **本文定位**：只讲"现在做什么、怎么跑、怎么验收"。状态事实以 [docs/STATUS.md](docs/STATUS.md) 为准，

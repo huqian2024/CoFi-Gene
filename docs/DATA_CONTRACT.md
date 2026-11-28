@@ -72,3 +72,61 @@ PIE `de/<cell_line>.parquet` 公开的列包括：`target`（扰动目标）、`
 | PIE DE 读取与标签规则 | 已实现，pyarrow 环境可跑 | `tests/test_pie_io.py` |
 | **真实 STRING/PIE 文件** | **未下载、未核验** | 第 3 节表格仍为空，需团队补齐 |
 
+
+## 6. M5.1 评估协议与数据版本（2026-11-28 新增）
+
+### 6.1 负样本定义（必须区分，不得混称）
+
+- **默认（目标通道语义）**：负样本 = 该通道内**未被观察到**的基因对。某对在 A 中无边、但在 B 中是正边，
+  在 A 的 Link Prediction 任务里仍可作为负样本——这正是"目标通道"的含义。
+- **严格双图语义（可选，需单独建数据集）**：负样本 = 两图均未观察到的基因对；用于"完全未知关系"任务，
+  必须另建数据集并在报告中标注为不同任务，不能与默认口径混在一张表里。
+- 负样本一律是 **sampled non-edge / presumed negative**，不是生物学证实的"无关系"。
+
+### 6.2 负采样规则（`cofi_gene.negative_sampling`）
+
+| 规则 | 内容 |
+| --- | --- |
+| 互斥 | 通道内 train/val/test 负样本两两不相交；采样按 `train → val → test` 顺序累积 forbidden |
+| 正边 | 任何 split 的负样本都不得命中该通道全部已知正边（含隐藏的 val/test 正边） |
+| 形式 | 统一 canonical `(min, max)`；无 self-loop；split 内无重复 |
+| 策略 | `uniform_random`（默认，历史口径）/ `degree_matched` / `two_hop` |
+| 度数来源 | 只允许用**协议可见的训练边**（`split.train`，即 `encode_edges` 的上界）计算 |
+| fallback | `uniform` / `relaxed_degree` / `error`；每次 fallback 计数并写入 `meta.negative_sampling.*.splits.*.fallback_rate` |
+| 记录 | `dataset.json → meta.split`（strategy/fallback/degree_buckets/互斥说明）与 `meta.negative_sampling`（每通道策略、seed、attempts、fallback、`cross_split_overlap`） |
+| 比例 | `PipelineConfig.negatives_ratio` 在**构建期**生效；`optim.negatives_ratio` 不参与训练（改它无效果，要改比例必须重建数据集） |
+
+### 6.3 跨视图可见性协议（`cofi_gene.protocols`）
+
+| 协议 | 编码图 | 训练正例 | 适用结论 |
+| --- | --- | --- | --- |
+| `cross_view_transfer`（A，默认） | 本通道 train 子集；另一视图可见同名对 | 本通道 train | "跨证据迁移/补全"；必须报告每通道 held-out 在另一视图的可见数量与比例 |
+| `dual_view_strict_holdout`（B） | 两通道 train 子集 **减去** 两通道 val/test 并集 | 同样减去该并集 | "两视图均无直接监督"的严格口径；残留可见度必须为 0 |
+
+两协议都保持：节点、特征、val/test 正边、负样本集合不变；执行后必须重新通过 `CoFiDataset.validate()`。
+
+### 6.4 缺边模式（`cofi_gene.perturbation`）
+
+| 模式 | 删除对象 | 可支持的表述 |
+| --- | --- | --- |
+| `adjacency`（M5 历史口径） | 只删 `encode_edges`（及其权重） | "邻接信息减少" |
+| `supervision_aware` | 同一次嵌套抽样删除 `encode_edges` **和** `train` 正例 | "训练关系缺失"；需报告 `num_train_positives_removed` |
+
+比例 0/0.1/0.3/0.5，删边种子 = `SeedSequence([run_seed, channel_index, 0xC0F1])`，与比例无关 → 嵌套；
+`data.drop_channels` 可只损伤 A、只损伤 B 或两者（报告中必须写明删了哪些通道）。
+
+### 6.5 数据版本
+
+| 目录 | 内容 | 用途 |
+| --- | --- | --- |
+| `data/processed/real_v1` | 历史构建（负样本可能跨 split 重复） | 保留只读；审计会 FAIL，不可再用于正式训练 |
+| `data/processed/real_v1_1` | 同划分/同特征，负样本互斥 | M5.1 之后的所有正式训练 |
+| `data/processed/real_v1_1_deg` | 同上，`negatives_strategy=degree_matched` | Stage 3 困难负样本评估（冻结 checkpoint） |
+| `data/processed/synthetic_v1`、`ci_synthetic` | 合成数据 | 单元/CI 冒烟，不得作为科学结果 |
+
+### 6.6 审计门槛（每次训练前自动执行）
+
+`CoFiDataset.validate()` 与 `cofi_gene.audit.audit_dataset()` 必须 PASS 才能训练；检查项、ID 与失败后果见
+`docs/M5_1_EVALUATION_AUDIT.md` §3。任何 WARN（如特征溯源不可核验）会写入 `metrics.json.audit.warning_ids`，
+必须在结果报告中说明，不能当作 PASS 忽略。
+

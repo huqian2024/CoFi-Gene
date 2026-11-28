@@ -98,3 +98,18 @@ CI run 41283635590（`data-and-splits` ✅ / `torch-cpu` ✅）；`pytest -q` �
 详细说明见 **`docs/WEEK5_IMPLEMENTATION_REPORT.md`**，决策见 D-024/D-025/D-026。
 未开启扰动时 B0–B7 的 config/hash/metrics 与 Week 4 逐字节一致（有 `edge_drop_fraction=0` 等价性用例）。
 
+
+## M5.1 交付结果（2026-11-28，本地分支 `codex/m5.1-evaluation-audit`）
+
+| 里程碑 | 代码侧 | 数据/训练侧 |
+| --- | --- | --- |
+| M5.1 | ✅ 负样本跨 split 互斥、6 类新校验（`validate()` + `inspect()`）、统一可见性协议、两种删边模式、训练前审计闸门、困难负样本、非神经网络基线、Stage 0–5 实验矩阵；`300 passed` | ⏳ 需用 `real_v1_1` 重训 Stage 0–5，并由服务器回传审计与阶段汇总 |
+
+证据：`docs/M5_1_EVALUATION_AUDIT.md`（B-01…B-11、E-01…E-06）、`docs/M5_1_SERVER_TRAINING_GUIDE.md`、
+`docs/M5_1_DEVELOPMENT_HANDOVER.md`；`src/cofi_gene/{protocols,audit,baselines,evaluate}.py`；
+`scripts/{audit_dataset,run_baselines,run_experiments}.py`；`tests/test_m5_1_*.py`（+82 例）；CI 新增加固步骤。
+
+⚠ 本文件上方"M5 真实数据结果"与 M5/M6 报告中的数值 = **原始评估协议下的初步结果**（负样本跨 split 可能重复、
+缺边只删编码图、服务器 B4–B7 为来源特异实现），必须用修复后的 `real_v1_1` 复核。
+`data/processed/real_v1` 保留只读，新训练一律用 `real_v1_1`。
+

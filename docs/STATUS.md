@@ -1,8 +1,48 @@
 # 项目状态（每次合并 PR 后更新）
 
-最后更新：2026-11-22（**Week 5 / M5 代码完成 + 合并队友真实数据首轮结果**）。Week 5：缺边鲁棒性（10/30/50%）、双视图遮蔽、Gene ID 错位对照的代码与协议已落地，`218 passed`，CI 增加 M5 冒烟；**真实数据上的曲线仍由训练方执行**。合并：`origin/main` `ae0b46b..d6a86bd`（仅新增 2 个结果 markdown，无代码改动）。
-阶段：**M5 代码完成（合成数据 + CPU 验证）→ 等训练方在真实数据上跑曲线；M6 下游 DE MLP 仍未实现**
-详细报告：[`docs/ALL_MODELS_RESULTS_2026-11-19.md`](ALL_MODELS_RESULTS_2026-11-19.md)（B0–B7 全表）｜[`docs/FIRST_ROUND_RESULTS.md`](FIRST_ROUND_RESULTS.md)（B0–B5 首轮）｜[`docs/WEEK5_IMPLEMENTATION_REPORT.md`](WEEK5_IMPLEMENTATION_REPORT.md)（Week 5 / M5）｜[`docs/WEEK4_IMPLEMENTATION_REPORT.md`](WEEK4_IMPLEMENTATION_REPORT.md)（Week 3 见 `WEEK3_IMPLEMENTATION_REPORT.md`）
+最后更新：2026-11-28（**M5.1 评估审计与协议增强完成**：本地分支 `codex/m5.1-evaluation-audit`，4 个提交、40 文件、+4481/−175、`300 passed`；同时已合并队友 M5/M6 结果文档 `06c175a..4cabf59`）。
+阶段：**M5.1 评估审计与协议增强已在本地分支完成（300 passed）；真实数据需用 `real_v1_1` 重训复核；M6 旧结果仅为初评**
+详细报告：[`docs/M6_THREE_SEED_ANALYSIS_2026-11-26.md`](M6_THREE_SEED_ANALYSIS_2026-11-26.md)（M6 三种子 + 逐目标）｜[`docs/M6_DOWNSTREAM_RESULTS_2026-11-26.md`](M6_DOWNSTREAM_RESULTS_2026-11-26.md)（M6 首轮）｜[`docs/M5_ROBUSTNESS_RESULTS_2026-11-25.md`](M5_ROBUSTNESS_RESULTS_2026-11-25.md)（M5）｜[`docs/ALL_MODELS_RESULTS_2026-11-19.md`](ALL_MODELS_RESULTS_2026-11-19.md)（B0–B7 上游全表）｜[`docs/FIRST_ROUND_RESULTS.md`](FIRST_ROUND_RESULTS.md)（B0–B5 首轮）｜[`docs/WEEK5_IMPLEMENTATION_REPORT.md`](WEEK5_IMPLEMENTATION_REPORT.md)（M5 代码侧）｜[`docs/WEEK4_IMPLEMENTATION_REPORT.md`](WEEK4_IMPLEMENTATION_REPORT.md)（Week 3 见 `WEEK3_IMPLEMENTATION_REPORT.md`）
+
+## M5.1 评估审计与协议增强（2026-11-28，本地分支 `codex/m5.1-evaluation-audit`）
+
+| 项 | 值 |
+| --- | --- |
+| 范围 | Evaluation Audit & Protocol Enhancement；**未新增模型**，B0–B7 数学定义未改（`test_models` / `test_week3_models` 全绿） |
+| 修复（P0） | ① 负样本 train/val/test 互斥；② `validate()` 补 6 类检查（`encode⊆train`、self-loop、权重长度等）；③ 缺边区分 `adjacency` / `supervision_aware`；④ 遮蔽统一到 `protocols.py`；⑤ 训练前审计 + `audit.json` + `status=complete` |
+| 新增（P1） | `degree_matched` / `two_hop` 负样本、5 个非神经网络基线、两套可见性协议、Stage 0–5 实验矩阵（57 格）、冻结 checkpoint 评估 |
+| 新增文件 | `src/cofi_gene/{protocols,audit,baselines,evaluate}.py`、`scripts/{audit_dataset,run_baselines,run_experiments}.py`、`tests/test_m5_1_*.py`（8 个文件）、3 份 M5.1 文档 |
+| 测试 | `pytest -q` → **300 passed**（218 → +82，无 skip）；CI 增加审计/基线/Stage 4/Stage 3 冒烟 |
+| 数据版本 | 历史 `real_v1` **不覆盖**；训练须用新构建 `real_v1_1`（同划分、负样本互斥）；`real_v1_1_deg` 用于困难负样本评估 |
+| 历史结果口径 | M5/M6 结果 = **原始评估协议下的初步结果**，需用修复后协议复核；旧 checkpoint 只作诊断 |
+| 未解决 | 服务器 `codex/m5-source-specific`、`codex/m6-downstream` 未入库；真实数据审计与重训待服务器执行（B-11） |
+| 交付文档 | [`docs/M5_1_EVALUATION_AUDIT.md`](M5_1_EVALUATION_AUDIT.md)、[`docs/M5_1_SERVER_TRAINING_GUIDE.md`](M5_1_SERVER_TRAINING_GUIDE.md)、[`docs/M5_1_DEVELOPMENT_HANDOVER.md`](M5_1_DEVELOPMENT_HANDOVER.md) |
+
+## M5 / M6 真实数据结果（队友提交于 2026-11-25 / 2026-11-26，2026-11-28 合并）
+
+| 项 | 值 |
+| --- | --- |
+| 合并方式 | `git fetch` + `git pull --ff-only origin main`：`06c175a..4cabf59`，3 个提交、**仅新增 3 个 markdown，无代码改动**；本地无独有提交，工作区干净 |
+| 实现来源 | M5 运行来自服务器分支 `codex/m5-source-specific`（整合提交 `5ec6cbf`，服务器回归 248 passed）；M6 来自 `codex/m6-downstream`（`8ff31f8`，253 passed / 1 skipped）。**两个提交在本仓库 `git cat-file` 均为 not-in-this-repo** |
+| 关键口径差异 | M5/M6 使用**来源特异 + 残差**的 B4–B7 实现，与本仓库 main 上「`encode()` 对两通道返回同一融合向量」的定义不同；两边的 B4–B7 指标不可直接互换引用 |
+| M5 规模 | real_v1：18,002 基因 / 128 维；A 测试正负例各 14,408、B 各 87,126（阳性率 50%）；主曲线 B0–B7 × {0,10,30,50}% = 32 单元 + 错位 5 单元（B3–B7，ratio=0）+ 双视图遮蔽 3 单元（B1/B4/B5，ratio=0.3），共 40 单元、seed 42、两个 4090 并行 |
+| M5 结论 | 四档删边比例下 A 通道最高仍是 B1（0.9617 → 50% 0.9578）、B 通道最高仍是 B2（0.9670 → 0.9636），**双图方法未超各自单图**；B6 在 50% 删边两通道各降约 0.009（幅度大于 B5），**本轮不支持「Attention 反馈提升缺边鲁棒性」**；错位后 B5 两通道 −0.0045 / −0.0022，B7 −0.0102 / −0.0015，方向不一致，机制待独立证据 |
+| M5 预算风险 | 36/40 单元跑满 200 epoch，26 个最优验证权重落在 epoch 200 → 预算上限问题依旧存在 |
+| M6 数据 | PIE 四细胞系（HepG2/Jurkat/K562/RPE1），`p_adj<0.05` 无 log2FC 门槛；train/val/test = 1283/274/276 目标、24,358,488 / 5,167,932 / 5,252,016 行；按目标分组防泄漏，自然阳性率（test macro 参考 0.093746、micro 0.096429） |
+| M6 训练 | 冻结上游表示 + 统一 MLP（261→128→64→1、41,857 参数），Adam lr=1e-3、batch 65,536、≤12 epoch、patience=3，权重按验证集 macro target AP 选择 |
+| M6 首轮（seed 42） | **macro target AP 最高是 B0 = 0.2946**；micro AP 最高 B7 = 0.3580（B0 = 0.2925，+0.0655）；micro AUROC 最高 B6 = 0.8017 |
+| M6 三种子（下游 seed 42/43/44） | macro target AP：B0 0.294553±0.001138 仍最高，B7 0.289564±0.001619；成对差值 B1−B0 −0.025852、B5−B4 −0.004266、B6−B5 +0.002130、B7−B4 +0.000824；micro AP：B7−B0 +0.059236 |
+| M6 逐目标 | 276 个测试目标中 B7 相对 B0 提高 108 / 下降 163 / 持平 5；低阳性率目标组平均退步明显，RPE1 差距最大（B0 0.3942 vs B7 0.3567） |
+| M6 可支持判断 | 现有证据**不支持**图预训练提升「平均未知扰动目标」的预测能力；整体（micro）排序有收益但逐目标未提升，不能改主指标或断言机制 |
+| 已知上游缺陷 | 上游 train/test 负样本仍有重叠（A=12、B=354），未以修正数据重训 → 本轮 M6 只能标为「当前表示的下游初评」 |
+| 复现缺口 | `scripts/run_downstream_de.py`、`docs/SOURCE_SPECIFIC_IMPLEMENTATION.md`、`runs/m5_source_specific_20261125/`、`runs/m6_20261126/`、`data/processed/real_v1/` 均只在训练机（数据/权重/预测不上 GitHub，符合约定） |
+
+M5/M6 之后的本仓库下一步（不新增模型，仍守 B0–B7）：
+
+1. **要求把 `codex/m5-source-specific`、`codex/m6-downstream` 推回 GitHub（或重放为补丁）**，至少补上 `scripts/run_downstream_de.py` 与 `SOURCE_SPECIFIC_IMPLEMENTATION.md`；否则本仓库无法重跑 M5/M6。
+2. **修复上游 train/test 负样本重叠（A=12、B=354）后复验上游与下游**，在此之前 M6 结论一律标注「初评」。
+3. 统一按验证集确定训练预算（M5 有 26/40 单元顶到 200 epoch，M6 有单元顶到 12 epoch 上限）。
+4. 诊断 M6 的 macro/micro 分歧与低阳性率目标、RPE1 退步；**不按测试排名为单组调参**，保留 macro target AP 为主指标。
 
 ## Week 5 交付（2026-11-22，M5 代码侧）
 
@@ -58,11 +98,11 @@
 2. `data/processed/real_v1/`、`runs/real_v1/b*_real_v1_seed42/`、`manifest.json` 与 `dataset.npz`（SHA-256 `fee691ce…`）都只在训练机上，本仓库 `data/processed/` 仅有 `ci_synthetic`、`synthetic_v1`。
 3. 只有 seed 42；B1/B2/B4/B5/B7 的最佳 epoch 落在 200 上限，训练预算要按验证集统一确定后才能支撑消融结论。
 
-下一步（按 `AGENTS.md` 范围，不新增模型）：
+下一步（按 `AGENTS.md` 范围，不新增模型）——**2026-11-22 记录，状态已由开头「M5 / M6 真实数据结果」小节更新**：
 
-1. **把三个服务器修复提交推回仓库或重放为补丁**，否则真实结果无法从本仓库复现（需队友配合）。
-2. **下游 DE MLP（M6）仍未实现**，这是 B0–B7 下游 DE AUPRC 对比的前置。
-3. 缺边鲁棒性 10/30/50%（M5）+ `mask_other_view=true` 口径；随后 3 seed（M7）复验反馈与融合结论。
+1. 把三个服务器修复提交推回仓库或重放为补丁（未完成；M5/M6 的 `codex/*` 分支同样未推回）。
+2. ~~下游 DE MLP（M6）仍未实现~~ → **已由训练机实现并跑出结果（`scripts/run_downstream_de.py`，2026-11-26），但实现未进入本仓库**。
+3. ~~缺边鲁棒性 10/30/50%（M5）待跑~~ → **已完成 40 单元（2026-11-25，单 seed）**；`mask_other_view=true` 口径作为补充记录；3 seed（M7，上游三 seed）仍待做。
 
 ## Week 4 交付（2026-11-15，M4）
 

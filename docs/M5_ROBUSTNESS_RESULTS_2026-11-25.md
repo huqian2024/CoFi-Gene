@@ -1,5 +1,11 @@
 # M5 真实数据缺边、错位与遮蔽实验
 
+> ⚠ **M5.1 复核提示（2026-11-28 追加，原数值未修改）**：本报告来自 M5.1 之前的评估协议——负样本可能在
+> train/val/test 之间重复、缺边只删编码图（训练正例未同步）、且服务器 B4–B7 为"来源特异 + 残差"实现
+> （与本仓库 main 的共享融合向量不同）。因此这些数值只能作为**原始评估协议下的初步结果**；正式结论须用
+> `data/processed/real_v1_1` 按 `docs/M5_1_SERVER_TRAINING_GUIDE.md` 的 Stage 1–5 复核。
+> 审计与修复清单见 `docs/M5_1_EVALUATION_AUDIT.md`（B-01/B-03）。
+
 2026-11-25，seed 42。40 个实验单元完成，使用用户确认的来源特异 B4–B7，实现来源见 SOURCE_SPECIFIC_IMPLEMENTATION.md。M5 入口来自 GitHub main 06c175a，整合后的运行提交为 5ec6cbf6bbbb6d665057154fbb01e8ecca0aea0d，服务器分支为 codex/m5-source-specific。
 
 ## 环境与协议

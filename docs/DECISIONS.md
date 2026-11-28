@@ -108,3 +108,15 @@
 | D-025 | 已实现（默认关闭，绑定 D-016） | 双视图遮蔽的实现口径（`data.mask_other_view`）：若基因对 `p` 是通道 X 的 val/test 正边，则从另一通道 Y 的 **`encode_edges` 和 `train` 正边**同时删除。`val`/`test`/负样本/节点集不变，扰动后重跑 `CoFiDataset.validate()`。 | 只删编码图不够：Y 的监督仍会把“p 是边”教进共享表示，从而抬高 B 通道的恢复能力（夸大真正未知关系的可恢复性）。默认仍为 D-016 的“另一视图可见”（`false`），因为该口径需两人共同锁定后才能主导报告。 |
 | D-026 | 已实现（工程默认，待确认是否作为正式对照） | Gene ID 错位对照（`data.misalign_cross_view`）：只在 b3–b7 生效；由 `(num_nodes, seed)` 生成 **derangement**（无不动点），在 fusion 之前对**单个视图**（默认第二通道 = B）做行置换，然后解码仍按原基因下标。编码器、两图结构、监督与评估边都不变；置换为 non-persistent buffer，`state_dict`/checkpoint 不变，`metrics.json` 记录 `permutation_sha256` 与通道名。 | 恒等映射是静默 no-op，不能当对照；只打乱融合的配对，才能回答“模型是否真的用到了正确的跨图对应”。若要改成“打乱两图基因 ID 后再建图”（数据层错位），属于新的实验口径，需另行批准并重跑。 |
 
+
+## M5.1 新增决策（2026-11-28，append-only）
+
+| 编号 | 状态 | 决策 | 理由 / 影响 |
+| --- | --- | --- | --- |
+| D-027 | 已实现（P0 修复） | 负样本改为**跨 split 互斥**：按 `train → val → test` 顺序采样并累积已用集合，后一个 split 的 forbidden = 该通道全部已知正边 ∪ 之前所有 split 的负边；三方两两不相交。train 负样本的种子派生与 forbidden 语义不变。 | `docs/M5_1_EVALUATION_AUDIT.md` B-01：旧实现三个 split 各自采样，只排除已知正边（服务器检查：A 12 对、B 354 对 test 负样本出现在 train 负样本里）。修复只改变 val/test 负样本，但**正式结果必须用新数据重训**；`real_v1` 保留不覆盖，新目录为 `real_v1_1`。 |
+| D-028 | 已实现（协议默认，待两人确认写进报告） | 两套可见性协议：`cross_view_transfer`（Protocol A，默认；本通道隐藏自己的 val/test，另一视图可见同名基因对，必须报告可见数量/比例）与 `dual_view_strict_holdout`（Protocol B；把两通道 val/test 正边的并集从**两个编码图**和**两个训练正例集**同时移除，残留可见度必须为 0）。实现唯一化在 `cofi_gene/protocols.py`。 | 旧 `mask_other_view` 在两处实现且口径不同（pipeline 只删 encode，trainer 还删 train）。D-016 的"是否启用"升级为"用哪套协议 + 报告哪些数字"；Protocol A 的结论只能表述为跨证据迁移。 |
+| D-029 | 已实现（P0 修复） | 缺边鲁棒性区分两种模式：`adjacency`（只删编码边，训练正例不变；**M5 历史口径**）与 `supervision_aware`（同一次嵌套抽样同时删编码边与训练正例，val/test 与负样本不动）。模式写入 `metrics.json.protocol.edge_removal_mode` 且出现在 run 名中（`adj`/`sup`）。 | 历史 M5 曲线只能称"邻接信息减少"，不能称"训练关系缺失"（B-03）。两模式都保持嵌套抽样与跨模型共享同一删边集合。 |
+| D-030 | 已实现（强制闸门） | 训练入口默认 `audit_mode="strict"`：审计任何 FAIL 立即中止，不允许进入训练循环；`warn` 只用于诊断/兼容旧数据，`off` 仅限显式冒烟。审计报告写入 `run_dir/audit.json`，摘要写入 `metrics.json.audit`。 | 只修数据不够，必须让"违规数据无法进入训练"（B-02/B-05）。`A04/A06/A07` 等新检查使旧数据集无法静默通过。 |
+| D-031 | 已实现（P1 增强） | 新增困难负样本 `degree_matched`（正例端点度数分桶、度数只来自协议可见训练图）与 `two_hop`（训练图两跳非边），fallback 显式可配（`uniform`/`relaxed_degree`/`error`）且统计 `fallback_rate`。默认仍为 `uniform_random` 以保持历史可比性。 | 均匀负样本可能让任务过于简单（B-06）。困难策略当前用于**评估/对照**（Stage 3 冻结评估）；若用于训练需另立配置与目录（方案二）。 |
+| D-032 | 待确认 | ① 正式报告的主协议与主指标组合（建议：Protocol A 为迁移结论、Protocol B 为严格结论，主指标始终 AP）；② 是否把困难负样本**训练**（方案二）纳入范围（+8 格）；③ 是否研究 split seed 敏感性（需独立数据集，不与模型种子混用）。 | 这些选择会改变结论口径与服务器工作量，必须先由两人确认后再执行。 |
+
