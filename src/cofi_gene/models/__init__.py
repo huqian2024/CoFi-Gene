@@ -221,6 +221,18 @@ class UpstreamModel(nn.Module):
                                "set_encoding_graphs() first")
         return self._encoder_graphs
 
+    def encoding_weights(self) -> dict[str, torch.Tensor | None]:
+        """Edge weights that go with :meth:`encoding_graphs` (``None`` = unweighted).
+
+        Exposed for Week 7 reporting: the feedback case must state the weight
+        *before* and *after* the update, and rebuilding those numbers from a
+        private attribute would make the figure untrustworthy.
+        """
+        if self._encoder_graphs is None:
+            raise RuntimeError("no encoding graph registered; call "
+                               "set_encoding_graphs() first")
+        return self._encoder_weights or {}
+
     # ------------------------------------- Week 5 (M5) cross-view control
     @property
     def cross_view_permutation(self):

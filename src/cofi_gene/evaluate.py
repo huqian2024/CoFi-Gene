@@ -21,7 +21,8 @@ import numpy as np
 from .dataset import CoFiDataset
 from .metrics import binary_summary
 
-__all__ = ["load_checkpoint", "evaluate_checkpoint", "score_split"]
+__all__ = ["load_checkpoint", "build_model_from_checkpoint", "evaluate_checkpoint",
+           "score_split"]
 
 
 def load_checkpoint(path: str | Path, map_location: str = "cpu") -> dict:
@@ -68,6 +69,38 @@ def score_split(model, x, adjacencies, dataset: CoFiDataset, split: str) -> dict
     return result
 
 
+def build_model_from_checkpoint(checkpoint: dict, feature_dim: int,
+                                device: str = "cpu"):
+    """Rebuild the exact B0-B7 module recorded inside a checkpoint.
+
+    Shared by frozen evaluation and the Week 7 feedback-case export so both use
+    the model's *own* recorded config instead of a hand-copied constructor call.
+    """
+    import torch
+
+    from .models import build_model
+
+    run_config = checkpoint.get("config")
+    if not run_config:
+        raise ValueError("checkpoint has no config; cannot rebuild the model")
+    model_cfg = run_config["model"]
+    model = build_model(model_cfg["name"], feature_dim=feature_dim,
+                        hidden_dim=int(model_cfg["hidden_dim"]),
+                        num_layers=int(model_cfg["num_layers"]),
+                        dropout=float(model_cfg["dropout"]),
+                        fusion_dim=int(model_cfg["fusion_dim"]),
+                        edge_head=model_cfg["edge_head"],
+                        attention_heads=int(model_cfg.get("attention_heads", 4)),
+                        attention_dropout=model_cfg.get("attention_dropout"),
+                        attention_residual=bool(model_cfg.get("attention_residual",
+                                                              False)),
+                        feedback_alpha=float(model_cfg.get("feedback_alpha", 0.1)),
+                        feedback_margin=float(model_cfg.get("feedback_margin", 0.5)),
+                        ).to(torch.device(device))
+    model.load_state_dict(checkpoint["state_dict"])
+    return model, run_config
+
+
 def evaluate_checkpoint(dataset: CoFiDataset, checkpoint_path: str | Path,
                         config: dict | None = None, split: str = "test",
                         device: str = "cpu", protocol: str | None = None,
@@ -81,27 +114,14 @@ def evaluate_checkpoint(dataset: CoFiDataset, checkpoint_path: str | Path,
     """
     import torch
 
-    from .models import build_adjacencies, build_model
+    from .models import build_adjacencies
     from .perturbation import apply_data_perturbations
 
     checkpoint = load_checkpoint(checkpoint_path, map_location=device)
-    run_config = config or checkpoint.get("config")
-    if not run_config:
-        raise ValueError("checkpoint has no config and no config was supplied")
-    model_cfg = run_config["model"]
-    model = build_model(model_cfg["name"], feature_dim=dataset.num_features,
-                        hidden_dim=int(model_cfg["hidden_dim"]),
-                        num_layers=int(model_cfg["num_layers"]),
-                        dropout=float(model_cfg["dropout"]),
-                        fusion_dim=int(model_cfg["fusion_dim"]),
-                        edge_head=model_cfg["edge_head"],
-                        attention_heads=int(model_cfg.get("attention_heads", 4)),
-                        attention_dropout=model_cfg.get("attention_dropout"),
-                        attention_residual=bool(model_cfg.get("attention_residual", False)),
-                        feedback_alpha=float(model_cfg.get("feedback_alpha", 0.1)),
-                        feedback_margin=float(model_cfg.get("feedback_margin", 0.5)),
-                        ).to(torch.device(device))
-    model.load_state_dict(checkpoint["state_dict"])
+    if config is not None:   # explicit override keeps the public API of M5.1
+        checkpoint = {**checkpoint, "config": config}
+    model, run_config = build_model_from_checkpoint(checkpoint, dataset.num_features,
+                                                    device=device)
     model.eval()
 
     perturb_config = {"data": {},
@@ -130,7 +150,7 @@ def evaluate_checkpoint(dataset: CoFiDataset, checkpoint_path: str | Path,
     metrics = score_split(model, x, adjacencies, prepared, split)
     return {
         "checkpoint": str(checkpoint_path),
-        "model": model_cfg["name"],
+        "model": model.name,
         "split": split,
         "protocol": perturbation["visibility_protocol"],
         "edge_removal_mode": perturbation["edge_removal_mode"],
