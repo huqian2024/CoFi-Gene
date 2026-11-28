@@ -17,6 +17,32 @@ jobs:
         run: python -m pip install -e '.[dev,data]'
       - name: Run tests
         run: python -m pytest -q
+      - name: M5.1 data audit and non-neural baselines (numpy only)
+        run: |
+          python scripts/make_synthetic_dataset.py --raw data/raw/ci_synthetic \
+            --processed data/processed/ci_synthetic \
+            --n-genes 60 --n-raw-features 64 --n-components 16
+          python scripts/audit_dataset.py --dataset data/processed/ci_synthetic \
+            --out runs/ci_m51/audit.json
+          python scripts/run_baselines.py --dataset data/processed/ci_synthetic \
+            --out-dir runs/ci_m51/baselines --summary-name ci_baselines
+          python - <<'PY'
+          import json
+          audit = json.load(open("runs/ci_m51/audit.json", encoding="utf-8"))
+          assert audit["status"] == "PASS", audit["failed_ids"]
+          ids = {check["id"] for check in audit["checks"]}
+          assert any(check_id.startswith("C09") for check_id in ids)
+          assert "A06-dataset-hash" in ids
+          for channel, entry in audit["visibility"]["channels"].items():
+              assert entry["num_test"] > 0, channel
+          baselines = json.load(open("runs/ci_m51/baselines/ci_baselines.json",
+                                     encoding="utf-8"))
+          for channel in ("A", "B"):
+              for name, entry in baselines["results"][channel].items():
+                  assert 0.0 <= entry["average_precision"] <= 1.0, (channel, name)
+                  assert entry["graph"] == "encode_edges"
+          print("M5.1 audit + baselines smoke OK")
+          PY
 
   # Separate job because the CPU torch wheel is ~200 MB: keep the fast job fast,
   # but still execute the model/training tests on every push.
@@ -104,5 +130,35 @@ jobs:
               assert model["feedback"]["alpha"] == 0.1 and model["feedback"]["margin"] == 0.5
               assert record["test"] is None, f"{name} must not score the test split"
           print("B6/B7 feedback smoke OK")
+          PY
+      - name: M5.1 staged protocol smoke (supervision-aware removal + frozen eval)
+        run: |
+          python scripts/run_experiments.py --stage 4 \
+            --dataset data/processed/ci_synthetic --only-models b1 \
+            --only-ratios 0.5 --epochs 1 --out-dir runs/ci_m51/stage4
+          python scripts/run_experiments.py --stage 1 \
+            --dataset data/processed/ci_synthetic --only-models b1 \
+            --epochs 1 --out-dir runs/ci_m51/stage1
+          python scripts/run_experiments.py --stage 3 \
+            --dataset data/processed/ci_synthetic --only-models b1 \
+            --frozen-from runs/ci_m51/stage1 --out-dir runs/ci_m51/stage3
+          python - <<'PY'
+          import json
+          stage4 = json.load(open(
+              "runs/ci_m51/stage4/s4_b1_xfer_drop50_sup_seed42/metrics.json",
+              encoding="utf-8"))
+          protocol = stage4["protocol"]
+          assert protocol["edge_removal_mode"] == "supervision_aware"
+          assert protocol["visibility_protocol"] == "cross_view_transfer"
+          assert stage4["status"] == "complete"
+          assert stage4["audit"]["status"] == "PASS"
+          removed = stage4["perturbation"]["channels"]["A"]["num_train_positives_removed"]
+          assert removed > 0, "supervision-aware removal must drop training positives"
+          evaluated = json.load(open(
+              "runs/ci_m51/stage3/s3_b1_xfer_drop00_adj_seed42/eval.json",
+              encoding="utf-8"))
+          assert evaluated["model"] == "b1"
+          assert evaluated["metrics"]["A"]["n_positives"] > 0
+          print("M5.1 staged protocol smoke OK")
           PY
 
