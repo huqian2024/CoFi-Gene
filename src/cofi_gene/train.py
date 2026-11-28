@@ -26,12 +26,16 @@ from pathlib import Path
 
 import numpy as np
 
+from .audit import audit_dataset, require_pass
+from .audit import summarise as audit_summarise
+from .audit import write_report as write_audit_report
 from .config import dump_config, load_config, resolved_config_hash
 from .dataset import CoFiDataset
 from .manifest import git_commit, runtime_versions, sha256_file, utc_timestamp
 from .metrics import binary_summary
-from .perturbation import (apply_data_perturbations, cross_view_permutation,
-                           permutation_fingerprint)
+from .perturbation import (EDGE_REMOVAL_MODES, apply_data_perturbations,
+                           cross_view_permutation, permutation_fingerprint)
+from .protocols import VISIBILITY_PROTOCOLS
 
 __all__ = ["set_seed", "train_link_prediction", "evaluate_split", "main"]
 
@@ -100,6 +104,14 @@ def evaluate_split(model, x, adjacencies, dataset: CoFiDataset, split: str) -> d
     return result
 
 
+def _negative_strategy(dataset: CoFiDataset) -> dict | None:
+    """Negative-sampling strategy recorded at build time (``dataset.meta``)."""
+    recorded = dataset.meta.get("negative_sampling") or {}
+    if not recorded:
+        return None
+    return {name: entry.get("strategy") for name, entry in recorded.items()}
+
+
 def _mean_primary(metrics: dict, key: str = "average_precision") -> float:
     values = [channel[key] for channel in metrics.values() if key in channel]
     if not values:
@@ -109,12 +121,18 @@ def _mean_primary(metrics: dict, key: str = "average_precision") -> float:
 
 def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None = None,
                           out_dir: str | Path | None = None,
-                          evaluate_test: bool = True) -> dict:
+                          evaluate_test: bool = True,
+                          audit_mode: str = "strict",
+                          audit_roundtrip: bool = False) -> dict:
     """Full training loop; returns the metrics/provenance record written to disk.
 
     ``evaluate_test=False`` skips the final test-split scoring. It exists so that a
     Week 3 *smoke* run can be honest about never touching the test split; the
     default (``True``) is the unchanged Week 2 behaviour.
+
+    ``audit_mode`` controls the M5.1 pre-flight gate: ``"strict"`` (default) runs
+    :func:`cofi_gene.audit.audit_dataset` and aborts on any FAIL, ``"warn"``
+    records the failures and continues, ``"off"`` skips the audit entirely.
     """
     torch = _require_torch()
     from torch.nn import functional as F
@@ -128,12 +146,23 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
     set_seed(seed)
     device_obj = _resolve_device(device or runtime["device"])
 
+    if audit_mode not in ("strict", "warn", "off"):
+        raise ValueError("audit_mode must be 'strict', 'warn' or 'off'")
     dataset.validate()
-    # Week 5 (M5): optional protocol perturbations. They only shrink what the
-    # encoder may see (``encode_edges``) plus, for ``mask_other_view``, the other
-    # view's training positives; val/test positives and negatives never change.
+    audit_report = None
+    if audit_mode != "off":
+        audit_report = audit_dataset(
+            dataset, dataset_dir=runtime.get("dataset_dir")
+            or config["data"]["processed_dir"], config=config,
+            include_roundtrip=audit_roundtrip)
+        if audit_mode == "strict":
+            require_pass(audit_report)   # key errors must stop the run here
+    # Week 5/5.1: visibility protocol + optional edge removal. They only shrink
+    # what the encoder may see (``encode_edges``) plus, for the strict protocol or
+    # supervision-aware removal, the training positives; val/test positives and
+    # the negative sample never change.
     dataset, perturbation = apply_data_perturbations(dataset, config)
-    if perturbation["edge_drop_fraction"] > 0.0 or perturbation["mask_other_view"]:
+    if perturbation["changed"]:
         dataset.validate()   # the perturbed graph must still pass every leakage guard
     misalign = bool((config.get("data") or {}).get("misalign_cross_view", False))
     model = build_model(model_cfg["name"], feature_dim=dataset.num_features,
@@ -230,8 +259,7 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
     val_metrics = evaluate_split(model, x, adjacencies, dataset, "val")
     test_metrics = (evaluate_split(model, x, adjacencies, dataset, "test")
                     if evaluate_test else None)
-    active_perturbation = (perturbation["edge_drop_fraction"] > 0.0
-                           or perturbation["mask_other_view"] or misalign)
+    active_perturbation = bool(perturbation["changed"] or misalign)
 
     target_dir = Path(out_dir or runtime["out_dir"])
     run_name = runtime.get("run_name") or (
@@ -279,7 +307,22 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
              if evaluate_test else
              "test split NOT scored: smoke run launched with evaluate_test=False"),
             "negatives reused from the dataset build so all models see the same draw",
+            (f"M5.1 dataset audit: status={audit_report['status']} "
+             f"({audit_report['counts']['failed']} failed, "
+             f"{audit_report['counts']['warnings']} warning)"
+             if audit_report is not None else "M5.1 dataset audit skipped (audit_mode=off)"),
         ],
+        "status": "complete",
+        "finished_at": utc_timestamp(),
+        "protocol": {
+            "visibility_protocol": perturbation["visibility_protocol"],
+            "edge_removal_mode": perturbation["edge_removal_mode"],
+            "drop_channels": perturbation["drop_channels"],
+            "edge_drop_fraction": perturbation["edge_drop_fraction"],
+            "negative_strategy": _negative_strategy(dataset),
+            "changed": active_perturbation,
+        },
+        "audit": audit_summarise(audit_report) if audit_report is not None else None,
     }
     if active_perturbation:
         record["perturbation"] = perturbation
@@ -291,6 +334,8 @@ def train_link_prediction(dataset: CoFiDataset, config: dict, device: str | None
             "sample are unchanged")
     (run_dir / "metrics.json").write_text(
         json.dumps(record, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+    if audit_report is not None:
+        write_audit_report(audit_report, run_dir / "audit.json")
     dump_config(config, run_dir / "config.json")
     torch.save({"state_dict": model.state_dict(), "config": config,
                 "model_name": model_cfg["name"], "seed": seed},
@@ -323,6 +368,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--misalign-cross-view", action="store_true",
                         help="Week 5 (M5): break the A/B gene correspondence inside "
                              "fusion (experiment 3 control)")
+    parser.add_argument("--visibility-protocol", choices=VISIBILITY_PROTOCOLS, default=None,
+                        help="M5.1: cross-view visibility protocol "
+                             "(default cross_view_transfer; mask_other_view maps to "
+                             "dual_view_strict_holdout)")
+    parser.add_argument("--edge-removal-mode", choices=EDGE_REMOVAL_MODES, default=None,
+                        help="M5.1: 'adjacency' (M5 Mode 1, supervision kept) or "
+                             "'supervision_aware' (Mode 2, training positives removed too)")
+    parser.add_argument("--drop-channels", nargs="+", default=None, metavar="CHANNEL",
+                        help="M5.1: only damage these channels (default: all channels)")
+    parser.add_argument("--audit", choices=("strict", "warn", "off"), default="strict",
+                        help="M5.1: pre-flight dataset audit; 'strict' aborts on any FAIL")
+    parser.add_argument("--audit-roundtrip", action="store_true",
+                        help="M5.1: also verify save/load stability (slower on big data)")
     args = parser.parse_args(argv)
 
     overrides: dict = {}
@@ -344,18 +402,30 @@ def main(argv: list[str] | None = None) -> int:
         overrides.setdefault("data", {})["mask_other_view"] = True
     if args.misalign_cross_view:
         overrides.setdefault("data", {})["misalign_cross_view"] = True
+    if args.visibility_protocol is not None:
+        overrides.setdefault("data", {})["visibility_protocol"] = args.visibility_protocol
+    if args.edge_removal_mode is not None:
+        overrides.setdefault("data", {})["edge_removal_mode"] = args.edge_removal_mode
+    if args.drop_channels is not None:
+        overrides.setdefault("data", {})["drop_channels"] = list(args.drop_channels)
 
     config = load_config(args.config, overrides)
     dataset = CoFiDataset.load(config["data"]["processed_dir"])
     summary = dataset.validate()
     if args.dry_run:
-        print(json.dumps({"config": config, "dataset": summary}, indent=2, sort_keys=True))
+        audit_result = (audit_dataset(dataset, dataset_dir=config["data"]["processed_dir"],
+                                     config=config, include_roundtrip=args.audit_roundtrip)
+                        if args.audit != "off" else None)
+        print(json.dumps({"config": config, "dataset": summary,
+                          "audit": audit_result}, indent=2, sort_keys=True, default=str))
         return 0
 
     try:
         record = train_link_prediction(dataset, config, device=args.device,
                                        out_dir=args.out_dir,
-                                       evaluate_test=not args.skip_test)
+                                       evaluate_test=not args.skip_test,
+                                       audit_mode=args.audit,
+                                       audit_roundtrip=args.audit_roundtrip)
     except ImportError as exc:  # torch missing
         print(f"[cofi_gene.train] {exc}", file=sys.stderr)
         return 2
@@ -372,7 +442,13 @@ def main(argv: list[str] | None = None) -> int:
         print("[cofi_gene.train] perturbation="
               f"edge_drop_fraction={perturb['edge_drop_fraction']} "
               f"mask_other_view={perturb['mask_other_view']} "
-              f"misalign_cross_view={bool(perturb.get('misalign_cross_view'))}")
+              f"misalign_cross_view={bool(perturb.get('misalign_cross_view'))} "
+              f"edge_removal_mode={perturb['edge_removal_mode']} "
+              f"visibility_protocol={perturb['visibility_protocol']}")
+    if record.get("audit"):
+        audit_block = record["audit"]
+        print(f"[cofi_gene.train] audit={audit_block['status']} "
+              f"failed={audit_block['failed_ids']} warnings={audit_block['warning_ids']}")
     return 0
 
 
