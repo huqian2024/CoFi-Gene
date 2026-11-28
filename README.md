@@ -10,7 +10,7 @@
 > 当前状态：数据管线、B0–B3（Week 2）、**B4/B5（Week 3）**、**B6/B7（Week 4：One-Step Graph Feedback）**、
 > **Week 5 / M5（缺边鲁棒性、双视图遮蔽、Gene ID 错位对照）** 与
 > **M5.1（Evaluation Audit & Protocol Enhancement）** 的代码均已实现，
-> 本机在**合成数据 + CPU** 上验证（337 个用例；B6/B7 已通过防泄漏审计与 `α=0` 等价性验证）；
+> 本机在**合成数据 + CPU** 上验证（338 个用例；B6/B7 已通过防泄漏审计与 `α=0` 等价性验证）；
 > **Week 7（三种子聚合与三类图）的工具链已就绪**：`scripts/aggregate_seeds.py`（mean±样本 std、同 seed 配对差、预算饱和检查）、
 > `scripts/make_figures.py`（upstream/downstream/robustness/feedback 四类 SVG）、`scripts/export_feedback_case.py`；
 > 正式的三 seed 训练与出图仍需服务器按 [`docs/WEEK7_SERVER_TRAINING_GUIDE.md`](docs/WEEK7_SERVER_TRAINING_GUIDE.md) 执行。
@@ -52,7 +52,7 @@ export HTTPS_PROXY=http://127.0.0.1:7890 HTTP_PROXY=http://127.0.0.1:7890
 
 ```bash
 python -m pip install -e '.[dev,data]'          # 数据管线 + 测试
-python -m pytest -q                              # 337 个用例（缺 torch 时训练用例自动 skip）
+python -m pytest -q                              # 338 个用例（缺 torch 时训练用例自动 skip）
 
 # 1) 用合成数据把整条链路跑通（无需下载、无需 GPU）
 python scripts/make_synthetic_dataset.py --raw data/raw/synthetic_v1 \
@@ -133,7 +133,7 @@ pip install --index-url https://download.pytorch.org/whl/cpu torch   # CPU 机�
 
 - 已实现并测试：数据读取/对齐/划分/防泄漏/负采样互斥/特征压缩/**B0–B7 训练与评估**，
   **M5.1 数据审计、两套可见性协议、两种删边模式、困难负样本、非神经网络基线、阶段化实验矩阵**，
-  **Week 7 的三种子聚合与三类图工具链**，全部在**合成数据 + CPU** 上验证（`337 passed`）。
+  **Week 7 的三种子聚合与三类图工具链**，全部在**合成数据 + CPU** 上验证（`338 passed`）。
 - **未做**：真实数据重训（需 `real_v1_1`）、GPU 验证、M5.1 Stage 0–5 与 Week 7 Stage 5 的真实执行、
   服务器 `codex/*` 分支入库、下游 M6 用修复后表示重跑、图 1b（下游 DE）的生成。
 - M5/M6 历史数值只能标注为"原始评估协议下的初步结果"；见 [`docs/M5_1_EVALUATION_AUDIT.md`](docs/M5_1_EVALUATION_AUDIT.md)。

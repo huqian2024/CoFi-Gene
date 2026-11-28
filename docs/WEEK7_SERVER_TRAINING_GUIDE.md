@@ -19,7 +19,7 @@ git fetch origin && git checkout main && git pull --ff-only
 git log --oneline -1           # 记下 commit sha，回报时需要
 git status -sb                 # 必须干净
 python -m pip install -e '.[dev,data]'
-python -m pytest -q            # 期望 337 passed
+python -m pytest -q            # 期望 338 passed
 ```
 
 本轮**没有新增依赖**（图是纯 Python 生成的 SVG，不需要 matplotlib）。

@@ -17,11 +17,6 @@ No training, no data mutation: callers pass an already trained model.
 
 from __future__ import annotations
 
-import torch
-
-from .models.feedback import feedback_weights
-from .models.gcn import normalized_adjacency
-
 __all__ = ["feedback_edge_table", "select_case"]
 
 
@@ -34,6 +29,13 @@ def feedback_edge_table(model, x, channel: str, num_nodes: int,
     ``gene_ids`` maps node indices back to symbols for the figure; without it the
     rows fall back to ``node<index>`` labels.
     """
+    # torch and the model modules are imported here (not at module scope) so that
+    # ``scripts/*.py`` and this module stay importable on a torch-less CI job.
+    import torch
+
+    from .models.feedback import feedback_weights
+    from .models.gcn import normalized_adjacency
+
     if not getattr(model, "uses_feedback", False):
         raise ValueError(f"model {getattr(model, 'name', '?')!r} has no feedback step; "
                          "only B6/B7 can export a feedback case")

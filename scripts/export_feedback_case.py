@@ -28,10 +28,12 @@ if str(ROOT / "src") not in sys.path:  # allow running without installation
     sys.path.insert(0, str(ROOT / "src"))
 
 from cofi_gene.dataset import CoFiDataset  # noqa: E402
-from cofi_gene.evaluate import build_model_from_checkpoint, load_checkpoint  # noqa: E402
-from cofi_gene.feedback_report import feedback_edge_table  # noqa: E402
 from cofi_gene.manifest import git_commit, sha256_file, utc_timestamp  # noqa: E402
 from cofi_gene.perturbation import apply_data_perturbations  # noqa: E402
+
+# ``cofi_gene.evaluate`` / ``feedback_report`` pull in torch only when their
+# functions run, and are imported inside ``main()`` for the same reason: this
+# module must stay importable (``--help``, tests) on a torch-less CI job.
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -54,6 +56,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     import torch
+
+    from cofi_gene.evaluate import build_model_from_checkpoint, load_checkpoint
+    from cofi_gene.feedback_report import feedback_edge_table
 
     dataset = CoFiDataset.load(args.dataset)
     checkpoint = load_checkpoint(args.checkpoint, map_location=args.device)

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
+import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -214,3 +217,29 @@ def test_upstream_bars_allow_a_single_graph_model(tmp_path):
     out = tmp_path / "fig.svg"
     assert figures_cli.main(["--kind", "upstream", "--input", str(src),
                              "--out", str(out)]) == 0
+
+
+def test_week7_modules_import_on_a_torch_less_job():
+    """CI's numpy-only job collects these tests, so nothing may import torch at
+    module scope (regression guard: export_feedback_case once did)."""
+    code = textwrap.dedent(
+        """
+        import builtins, importlib.util
+        real = builtins.__import__
+        def fake(name, *args, **kwargs):
+            if name == "torch" or name.startswith("torch."):
+                raise ImportError("torch blocked for this check")
+            return real(name, *args, **kwargs)
+        builtins.__import__ = fake
+        import cofi_gene.aggregate, cofi_gene.feedback_report, cofi_gene.figures  # noqa
+        for path in ("scripts/export_feedback_case.py", "scripts/make_figures.py",
+                     "scripts/aggregate_seeds.py"):
+            spec = importlib.util.spec_from_file_location("m", path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        print("ok")
+        """)
+    result = subprocess.run([sys.executable, "-c", code], cwd=REPO,
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "ok" in result.stdout

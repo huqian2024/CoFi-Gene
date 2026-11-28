@@ -83,7 +83,7 @@ python scripts/make_figures.py --kind feedback \
 
 ## 5. 测试
 
-`python -m pytest -q` → **337 passed**（M5.1 的 300 例 + Week 7 新增 37 例，无 skip）。新增：
+`python -m pytest -q` → **338 passed**（M5.1 的 300 例 + Week 7 新增 38 例，无 skip）。新增：
 
 | 测试文件 | 覆盖 |
 | --- | --- |
@@ -91,6 +91,15 @@ python scripts/make_figures.py --kind feedback \
 | `tests/test_week7_figures.py` | 柱状图（含误差线、缺失通道留空）、折线图、案例图（节点/边/面板/图例）、非法输入与 `--only SVG` |
 | `tests/test_week7_feedback_case.py` | 每条边 Δ=after−before、margin 上界、top_k、focus_genes、无反馈模型/错通道/空图报错、确定性 |
 | `tests/test_week7_scripts.py` | 三个 CLI 的退出码与产物、混表拒绝/`--allow-warnings`、单图模型缺值、下游表、鲁棒性两种输入格式、导出案例 JSON |
+
+补充两项**跨环境**验证（这两个问题只在 CI 才会暴露，本地装了 torch 时看不出来）：
+
+- 用 `sys.modules["torch"] = None` 模拟"未安装 torch"的机器跑全量：**193 passed / 13 skipped**，
+  与 CI 的 `data-and-splits` 作业（只装 `numpy/pyyaml/pyarrow`）一致；
+- 该模拟暴露了一个真实缺陷：`scripts/export_feedback_case.py` 曾在**模块级** import torch，
+  而 `tests/test_week7_scripts.py` 在收集阶段就会加载它 → 无 torch 的作业会**直接 collection error**。
+  现已把 `cofi_gene.feedback_report` 与脚本内的相关 import 改为惰性加载，并新增回归测试
+  `test_week7_modules_import_on_a_torch_less_job`（子进程屏蔽 torch 后导入 3 个脚本 + 3 个模块）。
 
 ## 6. 未做 / 边界（必须如实说明）
 

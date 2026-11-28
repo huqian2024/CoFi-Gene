@@ -67,7 +67,7 @@ git log --oneline -1                     # 记下 commit sha，回报时需要
 ```bash
 git status -sb                 # 必须没有未提交改动
 git log --oneline -3
-python -m pytest -q            # 期望 300 passed（缺 torch 时部分用例自动 skip）
+python -m pytest -q            # 期望 338 passed（缺 torch 时部分用例自动 skip）
 ```
 
 **保护已有结果**：不要 `git reset --hard`、不要 `git clean -fdx`、不要在 `runs/` 或
@@ -91,7 +91,7 @@ python -m pip install torch --index-url https://download.pytorch.org/whl/cu121
 
 python scripts/check_environment.py                    # 打印 python/torch/CUDA 与 tensor 冒烟
 # 注意：--strict 还要求 PyG；本仓库上游不需要 PyG，不要用 --strict 作为门槛
-python -m pytest -q                                    # 确认 300 passed
+python -m pytest -q                                    # 确认 338 passed
 ```
 
 环境信息回报清单：`python -V`、`torch.__version__`、`torch.version.cuda`、GPU 型号与显存、

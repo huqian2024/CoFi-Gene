@@ -12,7 +12,7 @@
 ### 工程命令速查（不改变研究范围）
 
 - 安装：`python -m pip install -e '.[dev,data]'`；上游训练另装 `.[train]`（CPU 机器：`pip install --index-url https://download.pytorch.org/whl/cpu torch`）。
-- 测试：`python -m pytest -q`（337 个用例；缺少 torch / pyarrow 时相关用例自动 skip）。
+- 测试：`python -m pytest -q`（338 个用例；缺少 torch / pyarrow 时相关用例自动 skip）。
 - 数据审计（训练前必须 PASS）：`python scripts/audit_dataset.py --dataset data/processed/<name> --out runs/m5_1/audit.json`
 - 非神经网络基线：`python scripts/run_baselines.py --dataset data/processed/<name> --out-dir runs/m5_1/baselines`
 - M5.1 阶段矩阵：`python scripts/run_experiments.py --stage {0..5} --dataset ... --dry-run|--resume`（指南：`docs/M5_1_SERVER_TRAINING_GUIDE.md`）
