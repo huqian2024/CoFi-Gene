@@ -120,3 +120,12 @@
 | D-031 | 已实现（P1 增强） | 新增困难负样本 `degree_matched`（正例端点度数分桶、度数只来自协议可见训练图）与 `two_hop`（训练图两跳非边），fallback 显式可配（`uniform`/`relaxed_degree`/`error`）且统计 `fallback_rate`。默认仍为 `uniform_random` 以保持历史可比性。 | 均匀负样本可能让任务过于简单（B-06）。困难策略当前用于**评估/对照**（Stage 3 冻结评估）；若用于训练需另立配置与目录（方案二）。 |
 | D-032 | 待确认 | ① 正式报告的主协议与主指标组合（建议：Protocol A 为迁移结论、Protocol B 为严格结论，主指标始终 AP）；② 是否把困难负样本**训练**（方案二）纳入范围（+8 格）；③ 是否研究 split seed 敏感性（需独立数据集，不与模型种子混用）。 | 这些选择会改变结论口径与服务器工作量，必须先由两人确认后再执行。 |
 
+
+## Week 7 新增决策（2026-11-28，append-only）
+
+| 编号 | 状态 | 决策 | 理由 / 影响 |
+| --- | --- | --- | --- |
+| D-033 | **已锁定**（D-018 收口） | 上游训练预算锁定为 `configs/_base.yaml` 的现值：`lr=0.01`、`weight_decay=0`、`epochs=200`、`eval_every=10`、`early_stop_patience=50`、`grad_clip=5`、`dropout=0.2`；所有 B0–B7、所有 seed 共用，禁止按模型单独调。`scripts/aggregate_seeds.py` 的 `budget` 块必须报告"最优 epoch = 上限"的 run 数。 | 与 M5/M6 历史口径一致，避免再改预算导致全部重跑；代价是部分 run 仍未收敛，因此报告必须写饱和比例（M5 为 26/40），不能把"预算内最优"表述为"已收敛"。 |
+| D-034 | **已锁定** | Week 7 三种子（Stage 5）使用 `data/processed/real_v1_1` + `cross_view_transfer`（Protocol A），种子 42/43/44，只改模型初始化/训练洗牌种子，数据划分固定。报告必须同时给出 `audit.json` 里每通道的 `visible_in_other_encode` / 比例。 | 与历史数字可比；Protocol A 的结论只能表述为"跨证据迁移"。`dual_view_strict_holdout` 留作 Stage 2 的严格性诊断，不与 Stage 5 混表。 |
+| D-035 | **已决定**（等待 M6 代码） | 图 1（下游 DE AUPRC）**不使用文档里手抄的数值**：等 `codex/m6-downstream`（`8ff31f8`、`scripts/run_downstream_de.py`）入库后，由该入口产出逐 run 的 `metrics.json`，再用 `scripts/aggregate_seeds.py`（若字段不同则加薄适配）生成标准表，最后 `scripts/make_figures.py --kind downstream` 出图。 | 手抄数值无法追溯、也无法验证三种子的原始文件；用未入库的数值画图会违反"结果必须可回溯"的原则。在 M6 入库前，图 1 的位置由**上游 AP 图**（同脚本生成）占位，并在报告中标注"下游图待 M6 复现"。 |
+

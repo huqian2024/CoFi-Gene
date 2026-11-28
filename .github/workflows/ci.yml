@@ -161,4 +161,45 @@ jobs:
           assert evaluated["metrics"]["A"]["n_positives"] > 0
           print("M5.1 staged protocol smoke OK")
           PY
+      - name: Week 7 aggregation and figure smoke
+        run: |
+          python scripts/run_experiments.py --stage 5 \
+            --dataset data/processed/ci_synthetic --only-models b0 b1 \
+            --only-seeds 42 43 --epochs 1 --out-dir runs/ci_w7/stage5
+          python scripts/aggregate_seeds.py --runs runs/ci_w7/stage5 \
+            --out-dir runs/ci_w7/aggregate
+          python scripts/make_figures.py --kind upstream \
+            --input runs/ci_w7/aggregate/seed_aggregate.json \
+            --out runs/ci_w7/fig1_upstream.svg
+          python scripts/run_experiments.py --stage 4 \
+            --dataset data/processed/ci_synthetic --only-models b1 \
+            --only-ratios 0 0.5 --epochs 1 --out-dir runs/ci_w7/stage4
+          python scripts/make_figures.py --kind robustness \
+            --input runs/ci_w7/stage4/stage4_summary.json --channel A \
+            --out runs/ci_w7/fig2_robustness.svg
+          python scripts/run_experiments.py --stage 1 \
+            --dataset data/processed/ci_synthetic --only-models b7 \
+            --epochs 1 --out-dir runs/ci_w7/stage1
+          python scripts/export_feedback_case.py \
+            --checkpoint runs/ci_w7/stage1/s1_b7_xfer_drop00_adj_seed42/model.pt \
+            --dataset data/processed/ci_synthetic --channel A --top-k 5 \
+            --out runs/ci_w7/case_b7_A.json
+          python scripts/make_figures.py --kind feedback \
+            --input runs/ci_w7/case_b7_A.json --out runs/ci_w7/fig3_feedback.svg
+          python - <<'PY'
+          import json
+          agg = json.load(open("runs/ci_w7/aggregate/seed_aggregate.json", encoding="utf-8"))
+          assert agg["models"]["b1"]["A"]["n"] == 2, agg["models"]
+          assert "budget" in agg and "integrity" in agg
+          assert agg["integrity"]["blocking"] is False
+          case = json.load(open("runs/ci_w7/case_b7_A.json", encoding="utf-8"))
+          assert len(case["case"]["edges"]) == 5
+          summary = case["case"]["summary"]
+          assert summary["num_up"] + summary["num_down"] <= 5
+          assert summary["max_abs_delta"] >= 0.0
+          print("Week 7 aggregation/figure smoke OK")
+          PY
+          test -s runs/ci_w7/fig1_upstream.svg
+          test -s runs/ci_w7/fig2_robustness.svg
+          test -s runs/ci_w7/fig3_feedback.svg
 

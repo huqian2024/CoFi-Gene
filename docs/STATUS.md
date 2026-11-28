@@ -1,8 +1,20 @@
 # 项目状态（每次合并 PR 后更新）
 
-最后更新：2026-11-28（**M5.1 评估审计与协议增强完成**：本地分支 `codex/m5.1-evaluation-audit`，4 个提交、40 文件、+4481/−175、`300 passed`；同时已合并队友 M5/M6 结果文档 `06c175a..4cabf59`）。
-阶段：**M5.1 评估审计与协议增强已在本地分支完成（300 passed）；真实数据需用 `real_v1_1` 重训复核；M6 旧结果仅为初评**
+最后更新：2026-11-28（**Week 7 代码侧完成**：预算锁定 D-033、三种子聚合与三类图工具链，`337 passed`；正式训练与出图待服务器执行）。
+阶段：**Week 7 工具链就绪（聚合/出图/反馈案例）；Stage 5 三种子、图 2/3 数据待 `real_v1_1` 实跑；图 1 下游待 M6 入库**
 详细报告：[`docs/M6_THREE_SEED_ANALYSIS_2026-11-26.md`](M6_THREE_SEED_ANALYSIS_2026-11-26.md)（M6 三种子 + 逐目标）｜[`docs/M6_DOWNSTREAM_RESULTS_2026-11-26.md`](M6_DOWNSTREAM_RESULTS_2026-11-26.md)（M6 首轮）｜[`docs/M5_ROBUSTNESS_RESULTS_2026-11-25.md`](M5_ROBUSTNESS_RESULTS_2026-11-25.md)（M5）｜[`docs/ALL_MODELS_RESULTS_2026-11-19.md`](ALL_MODELS_RESULTS_2026-11-19.md)（B0–B7 上游全表）｜[`docs/FIRST_ROUND_RESULTS.md`](FIRST_ROUND_RESULTS.md)（B0–B5 首轮）｜[`docs/WEEK5_IMPLEMENTATION_REPORT.md`](WEEK5_IMPLEMENTATION_REPORT.md)（M5 代码侧）｜[`docs/WEEK4_IMPLEMENTATION_REPORT.md`](WEEK4_IMPLEMENTATION_REPORT.md)（Week 3 见 `WEEK3_IMPLEMENTATION_REPORT.md`）
+
+## Week 7 交付（2026-11-28，代码侧：固定超参 + 三种子聚合 + 三类图）
+
+| 项 | 值 |
+| --- | --- |
+| 决策 | **D-033** 预算锁定（lr 0.01 / 200 epoch / patience 50 / eval_every 10 / grad_clip 5，全模型共用）；**D-034** Stage 5 = `real_v1_1` + Protocol A、seed 42/43/44；**D-035** 图 1（下游 DE）待 M6 入库后从原始 `metrics.json` 生成，禁止手抄数值 |
+| 新增代码 | `aggregate.py`（mean±样本 std、同 seed 配对差、预算饱和、`integrity` 阻断标记）、`figures.py`（零依赖 SVG：柱状/折线/反馈案例图）、`feedback_report.py`（B6/B7 每条边 before/after/Δ）、`models.encoding_weights()`、`evaluate.build_model_from_checkpoint()` |
+| 新增脚本 | `scripts/aggregate_seeds.py`、`scripts/make_figures.py`（`--kind upstream/downstream/robustness/feedback`）、`scripts/export_feedback_case.py` |
+| 测试 | `pytest -q` → **337 passed**（300 → +37）；CI 新增 Week 7 冒烟（聚合 + 三图 + 反馈案例 + integrity 断言） |
+| 本地冒烟（**合成数据、仅验证管线**） | 6 格 × 2 epoch：`b0 A 0.8967±0.0227`、`b1 A 0.8513±0.0076`；预算饱和 6/6（2 epoch 上限，符合预期）；三张 SVG 生成成功 |
+| 待服务器 | Stage 5（24 格）→ `aggregate_seeds.py` → 图 1a/2/3；回传清单见 `docs/WEEK7_SERVER_TRAINING_GUIDE.md` §7 |
+| 文档 | [`docs/WEEK7_IMPLEMENTATION_REPORT.md`](WEEK7_IMPLEMENTATION_REPORT.md)、[`docs/WEEK7_SERVER_TRAINING_GUIDE.md`](WEEK7_SERVER_TRAINING_GUIDE.md) |
 
 ## M5.1 评估审计与协议增强（2026-11-28，本地分支 `codex/m5.1-evaluation-audit`）
 

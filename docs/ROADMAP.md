@@ -113,3 +113,16 @@ CI run 41283635590（`data-and-splits` ✅ / `torch-cpu` ✅）；`pytest -q` �
 缺边只删编码图、服务器 B4–B7 为来源特异实现），必须用修复后的 `real_v1_1` 复核。
 `data/processed/real_v1` 保留只读，新训练一律用 `real_v1_1`。
 
+
+## Week 7 交付（2026-11-28，代码侧）
+
+| 里程碑 | 代码侧 | 数据/训练侧 |
+| --- | --- | --- |
+| M7 | ✅ 预算锁定（D-033）、`aggregate_seeds.py`（mean±std / 同 seed 配对差 / 预算饱和）、`make_figures.py`（柱状 / 折线 / 案例图）、`export_feedback_case.py`；+37 例测试（`337 passed`） | ⏳ Stage 5 三种子（24 格）与图 1a/2/3 待实跑；图 1b（下游 DE）待 M6 代码入库 |
+
+证据：`docs/WEEK7_IMPLEMENTATION_REPORT.md`、`docs/WEEK7_SERVER_TRAINING_GUIDE.md`、
+`src/cofi_gene/{aggregate,figures,feedback_report}.py`、`scripts/{aggregate_seeds,make_figures,export_feedback_case}.py`、
+`tests/test_week7_*.py`、CI 的 Week 7 冒烟。
+
+约束：图中数字必须来自 `metrics.json`；聚合器对"混数据集 / 混协议 / 重复 seed"会阻断出图；
+预算饱和（最优 epoch = 200）必须写进报告，不能表述为"已收敛"。
