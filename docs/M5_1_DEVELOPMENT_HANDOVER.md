@@ -1,6 +1,6 @@
 # M5.1 开发交接（给项目负责人本人）
 
-分支：`codex/m5.1-evaluation-audit`（基于 `main` = `4cabf59`；**未 push、未合并 main**）
+分支：`codex/m5.1-evaluation-audit` → **已快进合并入 `main` 并推送（`c58b69c`）**；下文保留开发过程记录（当时基于 `4cabf59`）。
 日期：2026-11-28 ｜ 环境：Python 3.12 / torch 2.15.0+cpu（本地只做 CPU 验证）
 
 ## 1. 修改文件清单与原因

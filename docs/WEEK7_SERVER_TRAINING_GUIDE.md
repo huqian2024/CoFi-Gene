@@ -15,7 +15,7 @@
 ## 2. 代码同步与环境
 
 ```bash
-git fetch origin && git checkout codex/m5.1-evaluation-audit
+git fetch origin && git checkout main && git pull --ff-only
 git log --oneline -1           # 记下 commit sha，回报时需要
 git status -sb                 # 必须干净
 python -m pip install -e '.[dev,data]'
@@ -169,7 +169,7 @@ python scripts/make_figures.py --kind downstream \
 ```markdown
 ### Week 7 执行回报
 
-- 代码 commit：`____________`（分支 `codex/m5.1-evaluation-audit`）
+- 代码 commit：`____________`（`main`）
 - 数据：`data/processed/real_v1_1`，dataset.npz sha256 `____________`
 - 数据审计：`runs/week7/audit/real_v1_1_transfer.json` → 状态 ____
   - 跨视图可见：A ____ / ____（比例 ____）、B ____ / ____（比例 ____）

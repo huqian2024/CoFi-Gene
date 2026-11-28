@@ -99,7 +99,7 @@ CI run 41283635590（`data-and-splits` ✅ / `torch-cpu` ✅）；`pytest -q` �
 未开启扰动时 B0–B7 的 config/hash/metrics 与 Week 4 逐字节一致（有 `edge_drop_fraction=0` 等价性用例）。
 
 
-## M5.1 交付结果（2026-11-28，本地分支 `codex/m5.1-evaluation-audit`）
+## M5.1 交付结果（2026-11-28，已合并入 `main`，commit `c58b69c`）
 
 | 里程碑 | 代码侧 | 数据/训练侧 |
 | --- | --- | --- |

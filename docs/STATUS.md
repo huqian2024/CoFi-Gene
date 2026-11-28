@@ -16,7 +16,7 @@
 | 待服务器 | Stage 5（24 格）→ `aggregate_seeds.py` → 图 1a/2/3；回传清单见 `docs/WEEK7_SERVER_TRAINING_GUIDE.md` §7 |
 | 文档 | [`docs/WEEK7_IMPLEMENTATION_REPORT.md`](WEEK7_IMPLEMENTATION_REPORT.md)、[`docs/WEEK7_SERVER_TRAINING_GUIDE.md`](WEEK7_SERVER_TRAINING_GUIDE.md) |
 
-## M5.1 评估审计与协议增强（2026-11-28，本地分支 `codex/m5.1-evaluation-audit`）
+## M5.1 评估审计与协议增强（2026-11-28，已合并入 `main`，commit `c58b69c`）
 
 | 项 | 值 |
 | --- | --- |

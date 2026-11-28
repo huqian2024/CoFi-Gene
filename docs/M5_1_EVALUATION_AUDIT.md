@@ -1,6 +1,6 @@
 # M5.1 评估审计（Evaluation Audit）
 
-最后更新：2026-11-28 ｜ 基线：`main` = `4cabf59` → 开发分支 `codex/m5.1-evaluation-audit`
+最后更新：2026-11-28 ｜ 基线：`main` = `4cabf59` → 开发分支 `codex/m5.1-evaluation-audit` → **已快进合并入 `main` 并推送（`c58b69c`）**
 范围：只做 **M5.1 = Evaluation Audit & Protocol Enhancement**，不新增模型、不改 B0–B7 的研究定义、
 不覆盖任何历史数据/权重/结果。所有结论都可由"证据"列定位到代码或测试。
 

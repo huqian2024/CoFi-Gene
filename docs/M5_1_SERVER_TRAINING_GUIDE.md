@@ -14,7 +14,7 @@
 | 修复的缺陷（P0） | ① 负样本在 train/val/test 之间可能重复；② `CoFiDataset.validate()` 覆盖不足；③ 缺边只删编码图、训练正例未同步；④ 跨视图遮蔽有两份实现；⑤ 训练入口无审计/无完成标志 |
 | 新增的科研协议（P1） | 严格双视图遮蔽 `dual_view_strict_holdout`、困难负样本 `degree_matched` / `two_hop`、监督感知删边 `supervision_aware`、非神经网络基线（PA/CN/AA/RA/余弦） |
 | 旧结果怎么用 | 历史 M5/M6 数值 = **原始评估协议下的初步结果**，需用修复后的协议复核；旧 checkpoint 只可用于诊断，不能作为最终结论 |
-| 训练用代码版本 | 本分支 `codex/m5.1-evaluation-audit`（本地 commit 见 `git log -1`；未 push，见第三部分） |
+| 训练用代码版本 | `main` = `c58b69c`（M5.1 + Week 7 已合并并推送；`codex/m5.1-evaluation-audit` 同 commit） |
 | 训练用数据版本 | **必须新建** `data/processed/real_v1_1`（负样本互斥修复版）；**不要覆盖** `real_v1` |
 | 不改变的部分 | B0–B7 模型定义、两图通道语义、节点顺序、128 维特征、下游目标划分规则、历史文件 |
 
@@ -50,16 +50,16 @@
 
 ## 第三部分：代码同步
 
-本分支尚未 push（按项目约定由你确认后再推送）。可选两种方式，任选其一：
+代码已推送到 GitHub：`main` = `c58b69c`（M5.1 + Week 7 已合并）。任选一种同步方式：
 
 ```bash
 # 方式 A（推荐）：本地开发把分支推送到 GitHub 后，服务器直接拉取
 git fetch origin
-git checkout codex/m5.1-evaluation-audit
+git checkout main && git pull --ff-only
 git log --oneline -1                     # 记下 commit sha，回报时需要
 
 # 方式 B：用 patch / git bundle 传输（开发方提供），在服务器上应用
-# git bundle verify m5_1.bundle && git fetch m5_1.bundle codex/m5.1-evaluation-audit
+# git bundle verify m5_1.bundle && git fetch m5_1.bundle main
 ```
 
 同步后必须确认（把输出贴回）：
@@ -348,7 +348,7 @@ GPU 型号与显存峰值（若已有记录机制；没有就写"未记录"，�
 ### M5.1 服务器执行回报
 
 - 代码 commit：`____________`（`git log -1 --oneline` 输出）
-- 分支：`codex/m5.1-evaluation-audit`
+- 分支：`main`（`c58b69c`）
 - 环境：Python ___ / torch ___ / CUDA ___ / GPU ___（型号 + 显存）
 - 数据版本：`data/processed/real_v1_1`
   - dataset.npz sha256：`____________`

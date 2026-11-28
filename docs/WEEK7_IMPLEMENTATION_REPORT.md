@@ -1,6 +1,6 @@
 # Week 7 实施报告（代码侧：固定超参、三种子聚合、三类图）
 
-日期：2026-11-28 ｜ 分支：`codex/m5.1-evaluation-audit` ｜ 环境：Python 3.12 / torch 2.15.0+cpu
+日期：2026-11-28 ｜ 分支：`main`（已合并 `codex/m5.1-evaluation-audit`，commit `c58b69c`） ｜ 环境：Python 3.12 / torch 2.15.0+cpu
 范围：**只做本地代码工作**。按任务约定，正式训练、GPU 实验、多种子实跑由服务器负责人执行
 （指南见 `docs/WEEK7_SERVER_TRAINING_GUIDE.md`）。本报告不含任何真实数据指标。
 
